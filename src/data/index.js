@@ -1,6 +1,6 @@
 export { SUITS, SUIT_IDS } from './suits.js';
 export { HEROES, getHero } from './heroes.js';
-export { GEAR, getGear, gearByTier } from './gear.js';
+export { GEAR, getGear, gearByTier, buildFloor1LootDeck } from './gear.js';
 export {
   buildActionDeckCatalog,
   buildCrampDeck,

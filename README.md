@@ -63,24 +63,37 @@ localStorage.setItem('cbc-peer-secure', 'true')
 
 Or edit defaults in `src/net/peerConfig.js` and rebuild. See comments there.
 
-## What’s in the MVP
+## What’s playable (Floor 1)
 
-- Lobby: host/join, hero picks, theme/boss select, start Floor 1
-- Dealer tools: twist hand, deck counts, narrate log, clash stub resolve
-- Heroes: HP/gear/hand placeholders, shared map
-- Exploration stub: orthogonal move, reveal rooms, monster/boss → clash stub
-- Static data modules from design docs (heroes, gear, 68-card action deck, desperation, Floor 1 rooms/monsters/events/themes/twists)
+- Lobby: host/join, hero picks, theme/boss, **auto-random or fixed room layout**
+- Exploration: doorway-aware move (Pip half-moves), vault loot, sanctuary rest/revive, trap events, story/merchant, hallway echo, belt potions, **stunts**, **carry downed ally**
+- Clash & Chain: Suit/Rank/Wild/Cramp, **per-card Desperation**, monster/boss **traits**, hero **perks**, gear triggers, post-POOF loot, **Second Wind** charm
+- Boss co-op: join mid-clash, Boss acts every 2 hero turns, Bounce Back flips order
+- Dealer twists: Musical Rooms, Sticky Door Jam, Hall Monitor, Espresso, Untied Laces, Surprise Intern
+- Themes: T-03 Spark +1 damage wired; T-01/T-02 via twists/stunts
+- Victory checkpoint: +3 HP heal; Part I stories tuck Part II onto `storyStack`
 
-Not yet: full Clash & Chain card matching UI, stunt rolls, merchant trades, art.
+## Git branching
+
+Gameplay integrates through a **release** branch so multiple agents can land small features without deploying.
+
+```
+feature/*  →  PR  →  release/*  →  PR (when ready)  →  main  →  Pages
+```
+
+1. Branch from the active release (or `main` if none): `git checkout -b feature/<short-name>`
+2. Commit on the feature branch; push: `git push -u origin HEAD`
+3. Open a **PR into `release/<name>`** (e.g. `release/floor1`) — not into `main`.
+4. When the release is ready, open **one PR from `release/*` → `main`**. Merge only when Daniel says so.
+5. **GitHub Pages deploys only from `main`** via `.github/workflows/pages.yml` (GitHub Actions). Do **not** re-enable “Deploy from a branch”.
+
+Current integration branch: **`release/floor1`**.
 
 ## Deploy to GitHub Pages → cardgame.ruffarc.ca
 
-**Prefer a dedicated repo for this static game** (e.g. `danruff5/cardgame` or similar).  
-Do **not** fold this into `danruff5/ruffarccamping` (that’s the GoDaddy Python camping app).
+Repo: `danruff5/cardgame_virtual`. Live: **https://cardgame.ruffarc.ca**
 
-### Repo setup
-
-1. Repo: `danruff5/cardgame_virtual`. Custom domain via `public/CNAME` → `cardgame.ruffarc.ca` (Vite copies it into `dist/`).
+1. Custom domain via `public/CNAME` → `cardgame.ruffarc.ca` (Vite copies it into `dist/`).
 2. **Pages source must be GitHub Actions** (Settings → Pages → Source: GitHub Actions).  
    Do **not** use “Deploy from a branch” / `main` root — that publishes the unbuilt Vite source `index.html` (`/src/main.js`) and white-screens the live site. The workflow `.github/workflows/pages.yml` builds and uploads `dist/`.
 3. Custom domain `cardgame.ruffarc.ca` + HTTPS in Pages settings.

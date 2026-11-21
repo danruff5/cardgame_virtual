@@ -3,15 +3,20 @@ import {
   getGear,
   buildActionDeckCatalog,
   buildCrampDeck,
+  buildFloor1LootDeck,
   DESPERATION,
-  roomsForRecipe,
-  DEFAULT_FLOOR_RECIPE_IDS,
   THEMES,
   TWISTS,
   MONSTERS,
   BOSSES,
+  EVENTS,
+  MERCHANTS,
+  STORIES,
 } from '../data/index.js';
 import { shuffle, uid } from './util.js';
+import { buildFixedSnakeMap, buildRandomFloorMap, tilesConnect } from './mapLayout.js';
+
+export { tilesConnect, buildRandomFloorMap, buildFixedSnakeMap };
 
 /**
  * Public state shared to all peers. Dealer machine is authority.
@@ -44,10 +49,10 @@ export function createEmptyState(roomCode, hostPlayerId, hostName) {
     activeHeroIndex: 0,
     explorationActionsLeft: 2,
     map: {
-      // Simple stub map: linear/cross of recipe tiles placed on a grid by dealer later
-      tiles: [], // { key, x, y, roomId, faceUp, cleared, looted }
+      tiles: [], // { key, x, y, roomId, faceUp, cleared, looted, ... }
       width: 0,
       height: 0,
+      barriers: [], // Sticky Door Jam: [{ aKey, bKey }]
     },
     decks: {
       action: [],
@@ -57,33 +62,26 @@ export function createEmptyState(roomCode, hostPlayerId, hostName) {
       monsters: [],
       twists: [],
       twistHand: [],
+      loot: [],
+      lootDiscard: [],
+      events: [],
+      storyMerchant: [],
     },
     heroes: {}, // playerId -> hero runtime
     clash: null,
-    storyStack: [], // Part II callback ids
+    storyStack: [], // Part II callback ids (tucked for Floor 2+)
+    pending: null, // vault / event / story choice modal
+    layoutMode: 'random', // random | fixed
   };
 }
 
 export function createHeroRuntime(heroId, soloHardMode = false) {
   const def = HEROES.find((h) => h.id === heroId);
   if (!def) throw new Error(`Unknown hero ${heroId}`);
-  const loadout = def.starterGear.map((gid) => {
-    const g = getGear(gid);
-    return {
-      id: gid,
-      name: g.name,
-      slot: g.slot,
-      tapped: false,
-      strike: g.strike,
-      strikeBonusSuit: g.strikeBonusSuit,
-      tapBlock: g.tapBlock,
-      ignoreRanks: g.ignoreRanks,
-    };
-  });
+  const loadout = def.starterGear.map((gid) => gearRuntimeFromId(gid));
   const belt = [];
   if (soloHardMode) {
-    const charm = getGear('G-30');
-    belt.push({ id: 'G-30', name: charm.name, slot: 'belt' });
+    belt.push(gearRuntimeFromId('G-30'));
   }
   return {
     heroId,
@@ -102,40 +100,44 @@ export function createHeroRuntime(heroId, soloHardMode = false) {
     roomKey: null,
     explorationUsedThisTurn: 0,
     perkUsedThisClash: false,
+    shrineUsedThisFloor: false,
+    secondWindUsed: false,
+    stuntGearUsed: { scarf: false, kaleidoscope: false },
   };
 }
 
-/** Place default 14-tile recipe in a simple connected rectangle stub. */
-export function buildStubMap(recipeIds = DEFAULT_FLOOR_RECIPE_IDS) {
-  const rooms = roomsForRecipe(recipeIds);
-  // Layout: 4×4 with two empty corners — place in snake order for connectivity.
-  const slots = [
-    [0, 0], [1, 0], [2, 0], [3, 0],
-    [3, 1], [2, 1], [1, 1], [0, 1],
-    [0, 2], [1, 2], [2, 2], [3, 2],
-    [3, 3], [2, 3],
-  ];
-  const tiles = rooms.map((room, i) => {
-    const [x, y] = slots[i];
-    const faceUp = Boolean(room.startFaceUp);
-    return {
-      key: `t-${x}-${y}`,
-      x,
-      y,
-      roomId: room.id,
-      kind: room.kind,
-      name: room.name,
-      rule: room.rule,
-      faceUp,
-      cleared: faceUp,
-      looted: false,
-      locked: room.kind === 'stairs',
-    };
-  });
-  return { tiles, width: 4, height: 4 };
+/** Runtime gear instance with rule flags from catalog. */
+export function gearRuntimeFromId(gid) {
+  const g = getGear(gid);
+  if (!g) return { id: gid, name: gid, slot: 'belt', tapped: false };
+  return {
+    id: gid,
+    name: g.name,
+    slot: g.slot,
+    tapped: false,
+    strike: g.strike,
+    strikeBonusSuit: g.strikeBonusSuit,
+    tapBlock: g.tapBlock,
+    ignoreRanks: g.ignoreRanks ? [...g.ignoreRanks] : undefined,
+    gritIgnoresArmor: Boolean(g.gritIgnoresArmor),
+    type: g.type || null,
+    heal: g.heal,
+    rule: g.rule,
+  };
+}
+
+/** @deprecated Prefer buildRandomFloorMap / buildFixedSnakeMap from mapLayout.js */
+export function buildStubMap(recipeIds) {
+  return buildFixedSnakeMap(recipeIds);
+}
+
+export function buildFloorMap(layoutMode = 'random', recipeIds) {
+  if (layoutMode === 'fixed') return buildFixedSnakeMap(recipeIds);
+  return buildRandomFloorMap(recipeIds);
 }
 
 export function prepareFloorDecks() {
+  const partOnes = STORIES.filter((s) => s.part === 1);
   return {
     action: shuffle(buildActionDeckCatalog()),
     actionDiscard: [],
@@ -144,6 +146,13 @@ export function prepareFloorDecks() {
     monsters: shuffle(MONSTERS.map((m) => ({ ...m }))),
     twists: shuffle(TWISTS.map((t) => ({ ...t }))),
     twistHand: [],
+    loot: shuffle(buildFloor1LootDeck()),
+    lootDiscard: [],
+    events: shuffle(EVENTS.map((e) => ({ ...e }))),
+    storyMerchant: shuffle([
+      ...MERCHANTS.map((m) => ({ ...m, cardKind: 'merchant' })),
+      ...partOnes.map((s) => ({ ...s, cardKind: 'story' })),
+    ]),
   };
 }
 
@@ -175,6 +184,9 @@ export function publicStateFor(state, viewerPlayerId) {
       crampCount: copy.decks.cramp.length,
       monstersCount: copy.decks.monsters.length,
       twistsCount: copy.decks.twists.length,
+      lootCount: copy.decks.loot?.length ?? 0,
+      eventsCount: copy.decks.events?.length ?? 0,
+      storyMerchantCount: copy.decks.storyMerchant?.length ?? 0,
     };
     return copy;
   }
@@ -187,6 +199,9 @@ export function publicStateFor(state, viewerPlayerId) {
       crampCount: copy.decks.cramp.length,
       monstersCount: copy.decks.monsters.length,
       twistsCount: copy.decks.twists.length,
+      lootCount: copy.decks.loot?.length ?? 0,
+      eventsCount: copy.decks.events?.length ?? 0,
+      storyMerchantCount: copy.decks.storyMerchant?.length ?? 0,
       twistHand: copy.decks.twistHand.map((t) => ({ id: t.id, hidden: true })),
     };
   }

@@ -453,8 +453,38 @@
 
 .vcard:hover > .card-hover-tip,
 .map-tile-wrap:hover > .card-hover-tip,
-.clash-card-btn:hover .card-hover-tip {
+.clash-card-btn:hover .card-hover-tip,
+.log-card-mention:hover > .card-hover-tip {
   display: block;
+}
+
+.log-card-mention {
+  position: relative;
+  display: inline;
+  color: #ffe4a3;
+  border-bottom: 1px dotted rgba(255, 228, 163, 0.55);
+  cursor: help;
+  z-index: 1;
+}
+
+.log-card-mention:hover {
+  z-index: 60;
+  color: #fff1c8;
+}
+
+.log-card-mention > .card-hover-tip {
+  left: 0;
+  transform: none;
+  bottom: calc(100% + 6px);
+  width: 240px;
+}
+
+.log-card-mention > .card-hover-tip.tip-fixed {
+  display: block;
+  position: fixed;
+  bottom: auto;
+  z-index: 120;
+  width: 250px;
 }
 
 .clash-card-btn {
@@ -528,6 +558,10 @@
   filter: grayscale(0.25);
 }
 
-.clash-panel .vcard {
+.clash-modal .vcard {
   animation: rise 0.35s ease both;
+}
+
+.clash-modal .clash-back-slot .vcard {
+  animation: none;
 }
