@@ -63,24 +63,30 @@ localStorage.setItem('cbc-peer-secure', 'true')
 
 Or edit defaults in `src/net/peerConfig.js` and rebuild. See comments there.
 
-## What’s in the MVP
+## What’s playable (Floor 1)
 
-- Lobby: host/join, hero picks, theme/boss select, start Floor 1
-- Dealer tools: twist hand, deck counts, narrate log, clash stub resolve
-- Heroes: HP/gear/hand placeholders, shared map
-- Exploration stub: orthogonal move, reveal rooms, monster/boss → clash stub
-- Static data modules from design docs (heroes, gear, 68-card action deck, desperation, Floor 1 rooms/monsters/events/themes/twists)
+- Lobby: host/join, hero picks, theme/boss, **auto-random or fixed room layout**
+- Exploration: move (doorway-aware), vault loot, sanctuary rest/revive, trap events, story/merchant rooms, hallway echo, belt potions
+- Clash & Chain combat (Suit/Rank/Wild/Cramp/Desperation) + post-POOF loot
+- Dealer: twist hand (draw/play), narrate log, unlock stairs / end floor
+- Victory checkpoint: +3 HP heal; Part I stories tuck Part II ids onto `storyStack`
 
-Not yet: full Clash & Chain card matching UI, stunt rolls, merchant trades, art.
+Still lighter than the full table: free-form stunts, full twist table adjudication, multi-hero boss cadence, and most Tier 2 gear triggers.
+
+## Git branching
+
+Gameplay work no longer lands straight on `main`.
+
+1. Branch from latest `origin/main`: `git checkout -b feature/<short-name>`
+2. Commit on the feature branch; push: `git push -u origin HEAD`
+3. Open a **PR into `main`** (GitHub UI or `gh pr create`). Review / merge when Daniel says so.
+4. **GitHub Pages deploys only from `main`** via `.github/workflows/pages.yml` (GitHub Actions). Do **not** re-enable “Deploy from a branch” — that serves unbuilt source and white-screens the custom domain.
 
 ## Deploy to GitHub Pages → cardgame.ruffarc.ca
 
-**Prefer a dedicated repo for this static game** (e.g. `danruff5/cardgame` or similar).  
-Do **not** fold this into `danruff5/ruffarccamping` (that’s the GoDaddy Python camping app).
+Repo: `danruff5/cardgame_virtual`. Live: **https://cardgame.ruffarc.ca**
 
-### Repo setup
-
-1. Repo: `danruff5/cardgame_virtual`. Custom domain via `public/CNAME` → `cardgame.ruffarc.ca` (Vite copies it into `dist/`).
+1. Custom domain via `public/CNAME` → `cardgame.ruffarc.ca` (Vite copies it into `dist/`).
 2. **Pages source must be GitHub Actions** (Settings → Pages → Source: GitHub Actions).  
    Do **not** use “Deploy from a branch” / `main` root — that publishes the unbuilt Vite source `index.html` (`/src/main.js`) and white-screens the live site. The workflow `.github/workflows/pages.yml` builds and uploads `dist/`.
 3. Custom domain `cardgame.ruffarc.ca` + HTTPS in Pages settings.

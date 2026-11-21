@@ -2,7 +2,7 @@ import './style.css';
 import './ui/cards.css';
 import { PeerRoom, readRoomFromUrl, buildJoinUrl } from './net/peerRoom.js';
 import { dataInventory, HEROES, THEMES, BOSSES, SUITS } from './data/index.js';
-import { adjacentOrthogonal } from './game/state.js';
+import { adjacentOrthogonal, tilesConnect } from './game/state.js';
 import {
   renderActionCard,
   renderHeroCard,
@@ -215,6 +215,14 @@ function renderLobbyGame() {
             <button class="primary" type="button" id="btn-start">Start Floor 1</button>
           </div>
           <div class="field">
+            <label for="layout-mode">Room layout</label>
+            <select id="layout-mode">
+              <option value="random" selected>Auto-randomize connected layout</option>
+              <option value="fixed">Fixed snake layout (manual placeholder)</option>
+            </select>
+            <p class="muted" style="margin:0.35rem 0 0">Random places the 14-tile recipe edge-to-edge with stairs ≥3 steps from entrance (rulebook §2). Fixed keeps a deterministic map when you want a known shape.</p>
+          </div>
+          <div class="field">
             <label for="theme">Floor theme</label>
             <select id="theme">
               <option value="">(random on start)</option>
@@ -289,7 +297,8 @@ function wireLobbyGame() {
     room.dispatch({ type: 'add-local-hero', name: `Local ${session.state.players.length}` });
   });
   document.getElementById('btn-start')?.addEventListener('click', () => {
-    room.dispatch({ type: 'start-floor' });
+    const layoutMode = document.getElementById('layout-mode')?.value || 'random';
+    room.dispatch({ type: 'start-floor', layoutMode });
   });
   document.getElementById('theme')?.addEventListener('change', (e) => {
     const themeId = e.target.value;
@@ -357,12 +366,14 @@ function renderTable() {
               }</p>`
         }
         ${renderMap(state, isDealer, meId)}
+        ${renderPending(state, isDealer, meId)}
+        ${renderRoomActions(state, isDealer, meId)}
         ${
           state.phase === 'clash' && state.clash ? renderClashPanel(state, isDealer, meId) : ''
         }
         <div class="row">
           ${
-            (isDealer || meId === activeId) && state.phase === 'exploring'
+            (isDealer || meId === activeId) && state.phase === 'exploring' && !state.pending
               ? `<button type="button" id="btn-end-turn">End turn</button>`
               : ''
           }
@@ -504,7 +515,12 @@ function renderMap(state, isDealer, meId) {
         })
         .join('');
       const movable =
-        canMove && from && adjacentOrthogonal(from, tile) && !state.clash;
+        canMove &&
+        from &&
+        adjacentOrthogonal(from, tile) &&
+        tilesConnect(from, tile) &&
+        !state.clash &&
+        !state.pending;
       let label = tile.faceUp ? shortRoomLabel(tile) : '???';
       if (tile.kind === 'stairs' && tile.faceUp) {
         label = tile.locked || !state.floor?.stairsUnlocked ? 'Stairs 🔒' : 'Stairs ✓';
@@ -557,9 +573,11 @@ function renderDealerTools(state) {
     <div class="stack">
       <p class="muted">You are the authority host. Local stub seats can be moved with the map (dealer puppets the active turn).</p>
       <div class="inventory">
-        Decks — action ${state.decks.actionCount ?? '—'} · desperation ${state.decks.desperationCount ?? '—'} ·
+        Decks — action ${state.decks.actionCount ?? '—'} · loot ${state.decks.lootCount ?? '—'} ·
+        events ${state.decks.eventsCount ?? '—'} · story/merchant ${state.decks.storyMerchantCount ?? '—'} ·
         monsters ${state.decks.monstersCount ?? '—'} · twists ${state.decks.twistsCount ?? '—'}
       </div>
+      <p class="muted" style="margin:0">Layout: ${state.layoutMode || 'random'} · Story stack: ${(state.storyStack || []).length}</p>
       <h3>Floor progress</h3>
       <p class="muted" style="margin:0">Boss defeated: ${state.floor?.bossDefeated ? 'yes' : 'no'} · Stairs: ${stairsOpen ? 'unlocked' : 'locked'} · Key: ${state.floor?.shinyKey ? 'yes' : 'no'}</p>
       <div class="row">
@@ -578,12 +596,116 @@ function renderDealerTools(state) {
           .map((t) =>
             t.hidden
               ? `<div class="card-chip hidden">Twist</div>`
-              : `<div class="card-chip"><strong>${escapeHtml(t.name)}</strong><br/><span class="muted">${escapeHtml(t.effect || '')}</span></div>`,
+              : `<div class="card-chip"><strong>${escapeHtml(t.name)}</strong><br/><span class="muted">${escapeHtml(t.effect || '')}</span>
+                  <div class="row" style="margin-top:0.35rem">
+                    <button type="button" data-play-twist="${escapeAttr(t.id)}">Play</button>
+                  </div>
+                </div>`,
           )
           .join('') || '<span class="muted">None</span>'}
       </div>
+      <button type="button" id="btn-draw-twist">Draw Twist</button>
     </div>
   `;
+}
+
+function renderPending(state, isDealer, meId) {
+  const pending = state.pending;
+  if (!pending) return '';
+  const mine = isDealer || pending.heroPlayerId === meId;
+  if (pending.kind === 'vault') {
+    return `
+      <div class="panel" style="box-shadow:none;border-color:rgba(196,154,74,0.55)">
+        <h3>Vault / trade — keep 1</h3>
+        <p class="muted">Draw 2, keep 1 (rulebook §3). Excess belt slots auto-trim to 2.</p>
+        <div class="row">
+          ${(pending.options || [])
+            .map(
+              (opt, i) => `
+            <button type="button" class="primary" data-keep-loot="${i}" ${mine ? '' : 'disabled'}>
+              Keep ${escapeHtml(opt.name)}
+            </button>`,
+            )
+            .join('')}
+        </div>
+      </div>`;
+  }
+  if (pending.kind === 'event') {
+    const ev = pending.event;
+    return `
+      <div class="panel" style="box-shadow:none;border-color:rgba(180,90,90,0.45)">
+        <h3>${escapeHtml(ev.title)}</h3>
+        <p>${escapeHtml(ev.prompt)}</p>
+        <ul>${(ev.choices || []).map((c) => `<li>${escapeHtml(c)}</li>`).join('')}</ul>
+        <div class="row">
+          <button type="button" class="primary" data-event-choice="a" ${mine ? '' : 'disabled'}>Choice A</button>
+          <button type="button" data-event-choice="b" ${mine ? '' : 'disabled'}>Choice B</button>
+          <button type="button" data-event-choice="improvise" ${mine ? '' : 'disabled'}>Improvise</button>
+        </div>
+      </div>`;
+  }
+  if (pending.kind === 'story') {
+    const st = pending.story;
+    return `
+      <div class="panel" style="box-shadow:none;border-color:rgba(120,140,200,0.45)">
+        <h3>${escapeHtml(st.name)}</h3>
+        <p>${escapeHtml(st.scene || '')}</p>
+        <ul>${(st.choices || []).map((c) => `<li>${escapeHtml(c)}</li>`).join('')}</ul>
+        <div class="row">
+          <button type="button" class="primary" data-story-choice="a" ${mine ? '' : 'disabled'}>Choice A</button>
+          <button type="button" data-story-choice="b" ${mine ? '' : 'disabled'}>Choice B</button>
+          <button type="button" data-story-choice="improvise" ${mine ? '' : 'disabled'}>Improvise</button>
+        </div>
+      </div>`;
+  }
+  return '';
+}
+
+function renderRoomActions(state, isDealer, meId) {
+  if (state.phase !== 'exploring' || state.pending) return '';
+  const activeId = state.turnOrder[state.activeHeroIndex];
+  const canAct = isDealer || meId === activeId;
+  if (!canAct || state.explorationActionsLeft < 1) return '';
+  const hero = state.heroes[activeId];
+  if (!hero || hero.downed) {
+    // Still allow shrine revive by active hero? DOWNED can't act — dealer puppets ally
+  }
+  const tile = state.map.tiles.find((t) => t.key === hero?.roomKey);
+  if (!tile?.faceUp) return '';
+  const buttons = [];
+  if (tile.kind === 'vault' && !tile.looted) {
+    buttons.push(`<button type="button" id="btn-vault">Loot vault (1 Action)</button>`);
+  }
+  if (tile.kind === 'shrine') {
+    if (!hero.shrineUsedThisFloor && !hero.downed) {
+      buttons.push(`<button type="button" id="btn-shrine">Rest +3 HP (1 Action)</button>`);
+    }
+    const downedHere = Object.entries(state.heroes).filter(
+      ([, h]) => h.downed && h.roomKey === tile.key,
+    );
+    for (const [pid, h] of downedHere) {
+      buttons.push(
+        `<button type="button" data-revive="${escapeAttr(pid)}">Revive ${escapeHtml(h.name)} (1 Action)</button>`,
+      );
+    }
+  }
+  if (tile.merchant) {
+    buttons.push(
+      `<button type="button" id="btn-merchant" title="${escapeAttr(tile.merchant.greeting || '')}">Trade with ${escapeHtml(tile.merchant.name)}</button>`,
+    );
+  }
+  if (tile.kind === 'hallway' && !tile.hallwayEchoUsed) {
+    buttons.push(`<button type="button" id="btn-hallway">Echo stunt — draw 1 (1 Action)</button>`);
+  }
+  const beltHeal = (hero.belt || []).findIndex((b) => {
+    const g = b.id;
+    return g === 'G-27' || g === 'G-28';
+  });
+  if (beltHeal >= 0) {
+    buttons.push(`<button type="button" data-use-belt="${beltHeal}">Drink Fizz Potion (free)</button>`);
+  }
+  if (!buttons.length) return '';
+  return `<div class="row" style="flex-wrap:wrap">${buttons.join('')}</div>`;
 }
 
 function renderHeroPanels(state, meId, isDealer) {
@@ -683,6 +805,82 @@ function wireTable() {
   });
   document.getElementById('btn-end-floor')?.addEventListener('click', () => {
     room.dispatch({ type: 'end-floor', message: 'Dealer ends Floor 1 — victory!' });
+  });
+  document.getElementById('btn-draw-twist')?.addEventListener('click', () => {
+    room.dispatch({ type: 'draw-twist', reason: 'Dealer draws Twist' });
+  });
+  document.querySelectorAll('[data-play-twist]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      room.dispatch({ type: 'play-twist', twistId: btn.getAttribute('data-play-twist') });
+    });
+  });
+  document.querySelectorAll('[data-keep-loot]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      room.dispatch({
+        type: 'resolve-pending',
+        keepIndex: Number(btn.getAttribute('data-keep-loot')),
+      });
+    });
+  });
+  document.querySelectorAll('[data-event-choice]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      room.dispatch({
+        type: 'resolve-pending',
+        choice: btn.getAttribute('data-event-choice'),
+      });
+    });
+  });
+  document.querySelectorAll('[data-story-choice]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      room.dispatch({
+        type: 'resolve-pending',
+        choice: btn.getAttribute('data-story-choice'),
+      });
+    });
+  });
+  const activeId = session.state.turnOrder[session.state.activeHeroIndex];
+  const puppet = session.meta?.isHost && activeId !== session.meta.playerId;
+  const withPlayer = (action) =>
+    puppet ? { ...action, playerId: activeId } : action;
+  document.getElementById('btn-vault')?.addEventListener('click', () => {
+    room.dispatch(withPlayer({ type: 'interact', subtype: 'vault' }));
+  });
+  document.getElementById('btn-shrine')?.addEventListener('click', () => {
+    room.dispatch(withPlayer({ type: 'interact', subtype: 'shrine' }));
+  });
+  document.querySelectorAll('[data-revive]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      room.dispatch(
+        withPlayer({
+          type: 'interact',
+          subtype: 'revive',
+          targetPlayerId: btn.getAttribute('data-revive'),
+        }),
+      );
+    });
+  });
+  document.getElementById('btn-hallway')?.addEventListener('click', () => {
+    room.dispatch(withPlayer({ type: 'interact', subtype: 'hallway' }));
+  });
+  document.getElementById('btn-merchant')?.addEventListener('click', () => {
+    const hero = session.state.heroes[activeId];
+    if (!hero?.belt?.length) {
+      session.error = 'Need a belt consumable to trade (digital proxy for merchant deal).';
+      render();
+      return;
+    }
+    room.dispatch(withPlayer({ type: 'interact', subtype: 'merchant', beltIndex: 0 }));
+  });
+  document.querySelectorAll('[data-use-belt]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      room.dispatch(
+        withPlayer({
+          type: 'interact',
+          subtype: 'use-consumable',
+          beltIndex: Number(btn.getAttribute('data-use-belt')),
+        }),
+      );
+    });
   });
 }
 

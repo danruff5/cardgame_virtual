@@ -43,3 +43,20 @@ export function getGear(id) {
 export function gearByTier(tier) {
   return GEAR.filter((g) => g.tier === tier);
 }
+
+/** Floor 1 loot pool: Tier 1 dungeon loot + belt consumables (rulebook §2). */
+export function buildFloor1LootDeck() {
+  const tier1 = gearByTier(1);
+  const belt = GEAR.filter((g) => g.tier === 'belt' && g.type !== 'solo-charm');
+  const pool = [...tier1, ...belt];
+  return pool.map((g) => ({
+    id: `${g.id}-${Math.random().toString(36).slice(2, 7)}`,
+    gearId: g.id,
+    name: g.name,
+    slot: g.slot,
+    tier: g.tier,
+    type: g.type || null,
+    rule: g.rule,
+    flavor: g.flavor,
+  }));
+}
