@@ -2,7 +2,7 @@
 
 Browser multiplayer skeleton of the cozy basement crawl card game. **Vanilla JS + Vite**, **PeerJS WebRTC**, dealer/host machine is the rules authority — **no custom backend**. Built for static hosting (GitHub Pages).
 
-Target public URL (later): **https://cardgame.ruffarc.ca**
+Live: **https://cardgame.ruffarc.ca**
 
 ## Quick start (local)
 
@@ -78,20 +78,12 @@ Not yet: full Clash & Chain card matching UI, stunt rolls, merchant trades, art.
 **Prefer a dedicated repo for this static game** (e.g. `danruff5/cardgame` or similar).  
 Do **not** fold this into `danruff5/ruffarccamping` (that’s the GoDaddy Python camping app).
 
-### Repo setup (later pass)
+### Repo setup
 
-1. Create/push this project to its own GitHub repository under `danruff5`.
-2. Keep `public/CNAME` contents as:
-
-   ```text
-   cardgame.ruffarc.ca
-   ```
-
-   Vite copies `public/` → `dist/` on build, so Pages gets the CNAME file.
-3. Enable **GitHub Pages** on that repo:
-   - Source: **GitHub Actions** (build `npm ci && npm run build`, publish `dist/`)  
-     **or** deploy `dist/` to the `gh-pages` branch.
-4. In the repo Pages settings, set custom domain to `cardgame.ruffarc.ca` and enable HTTPS once DNS propagates.
+1. Repo: `danruff5/cardgame_virtual`. Custom domain via `public/CNAME` → `cardgame.ruffarc.ca` (Vite copies it into `dist/`).
+2. **Pages source must be GitHub Actions** (Settings → Pages → Source: GitHub Actions).  
+   Do **not** use “Deploy from a branch” / `main` root — that publishes the unbuilt Vite source `index.html` (`/src/main.js`) and white-screens the live site. The workflow `.github/workflows/pages.yml` builds and uploads `dist/`.
+3. Custom domain `cardgame.ruffarc.ca` + HTTPS in Pages settings.
 
 ### GoDaddy DNS (later pass)
 
@@ -113,7 +105,7 @@ npm run build
 
 `vite.config.js` uses `base: './'` so assets resolve on project Pages paths and on the custom domain root.
 
-**Note:** `public/assets` is gitignored (large PNGs). For Pages CI, copy or cache `../cardgame/assets` into `public/assets` before `vite build`, or vendor a trimmed art set into this repo later.
+Optimized WebP art is committed under `public/assets/`. Re-run `optimize-assets` only when regenerating from the sibling print-and-play project.
 
 ## Data sources
 
