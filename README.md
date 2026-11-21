@@ -66,12 +66,12 @@ Or edit defaults in `src/net/peerConfig.js` and rebuild. See comments there.
 ## What’s playable (Floor 1)
 
 - Lobby: host/join, hero picks, theme/boss, **auto-random or fixed room layout**
-- Exploration: move (doorway-aware), vault loot, sanctuary rest/revive, trap events, story/merchant rooms, hallway echo, belt potions
-- Clash & Chain combat (Suit/Rank/Wild/Cramp/Desperation) + post-POOF loot
-- Dealer: twist hand (draw/play), narrate log, unlock stairs / end floor
-- Victory checkpoint: +3 HP heal; Part I stories tuck Part II ids onto `storyStack`
-
-Still lighter than the full table: free-form stunts, full twist table adjudication, multi-hero boss cadence, and most Tier 2 gear triggers.
+- Exploration: doorway-aware move (Pip half-moves), vault loot, sanctuary rest/revive, trap events, story/merchant, hallway echo, belt potions, **stunts**, **carry downed ally**
+- Clash & Chain: Suit/Rank/Wild/Cramp, **per-card Desperation**, monster/boss **traits**, hero **perks**, gear triggers, post-POOF loot, **Second Wind** charm
+- Boss co-op: join mid-clash, Boss acts every 2 hero turns, Bounce Back flips order
+- Dealer twists: Musical Rooms, Sticky Door Jam, Hall Monitor, Espresso, Untied Laces, Surprise Intern
+- Themes: T-03 Spark +1 damage wired; T-01/T-02 via twists/stunts
+- Victory checkpoint: +3 HP heal; Part I stories tuck Part II onto `storyStack`
 
 ## Git branching
 
