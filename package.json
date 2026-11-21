@@ -12,6 +12,8 @@
     "optimize-assets": "node ./scripts/optimize-assets.mjs"
   },
   "devDependencies": {
+    "@emnapi/core": "2.0.0-beta.2",
+    "@emnapi/runtime": "2.0.0-beta.2",
     "vite": "^8.3.6"
   },
   "dependencies": {

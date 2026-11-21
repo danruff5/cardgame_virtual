@@ -23,7 +23,10 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci
+      # npm ci fails when Windows-generated locks omit Linux-only optional
+      # packages (Vite 8 / rolldown → @emnapi/*). npm install is the
+      # cross-platform-safe install for this static Pages build.
+      - run: npm install
       - run: npx vite build
       - name: Verify CNAME
         run: |
