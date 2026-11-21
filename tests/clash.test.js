@@ -146,8 +146,9 @@ describe('applyLeadCard / afterPlayUpdateActive', () => {
 
   it('afterPlay updates active to played card (parry switches suit)', () => {
     const clash = { activeSuit: 'brawn', activeRank: 4, pile: [] };
-    const kind = afterPlayUpdateActive(clash, rank('zip', 4));
-    expect(kind).toBe('parry');
+    // Kind is classified separately; afterPlay only advances Active Suit/Rank.
+    expect(classifyPlay(rank('zip', 4), clash)).toBe('parry');
+    afterPlayUpdateActive(clash, rank('zip', 4));
     expect(clash.activeSuit).toBe('zip');
     expect(clash.activeRank).toBe(4);
   });
