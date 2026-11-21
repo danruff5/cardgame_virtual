@@ -18,7 +18,6 @@ export function isSpecial(card) {
 export function weaponStrike(hero) {
   const w = hero?.weapon;
   if (!w) return 1;
-  // Strike values encoded on starter gear names via data; use strike from catalog if present on runtime
   return Number(w.strike ?? hero.weaponStrike ?? 2);
 }
 
@@ -29,54 +28,86 @@ export function strikeForGearId(gearId, getGear) {
 }
 
 /**
+ * Effective rank for monster Zip +1 (MON-01 Unpaid Overtime).
+ */
+export function effectiveMonsterRank(card, clash) {
+  if (!card || card.rank == null) return card?.rank ?? null;
+  let rank = Number(card.rank);
+  if (clash?.traitId === 'unpaid-overtime' && card.suit === 'zip') rank += 1;
+  return rank;
+}
+
+/**
  * Legal to play onto clash pile given active suit/rank.
  * Opening lead (no active): any non-cramp card.
+ *
+ * Options:
+ * - defensiveSparkAsAny: Fizzlewig Improvised Zap (Spark as any suit @ Rank 2)
+ * - bigSwing: Sir Bumbles +1 Rank on a Brawn card for this play
+ * - forceParry: Cookie-Tin Aegis [TAP] — any card counts as exact Parry
  */
-export function isLegalPlay(card, clash, { defensiveSparkAsAny = false } = {}) {
+export function isLegalPlay(card, clash, options = {}) {
+  const {
+    defensiveSparkAsAny = false,
+    bigSwing = false,
+    forceParry = false,
+  } = options;
   if (!card || isCramp(card)) return false;
   if (!clash?.activeSuit && clash?.activeRank == null) return true;
+  if (forceParry) return true;
   if (isWild(card)) return true;
 
   const activeSuit = clash.activeSuit;
   const activeRank = clash.activeRank;
 
   if (isSpecial(card)) {
-    // Specials: matching Suit OR matching same special kind on pile
     if (card.suit === activeSuit) return true;
     if (clash.topCard?.type === 'special' && clash.topCard?.kind === card.kind) return true;
     return false;
   }
 
-  // Rank cards
   if (card.suit === activeSuit) return true;
   if (card.rank != null && Number(card.rank) === Number(activeRank)) return true;
 
-  // Fizzlewig defensive: Spark as any suit at Rank 2 — caller sets flag when perk used
+  // Big Swing: Brawn card with +1 rank may match active rank for Parry legality
+  if (bigSwing && card.suit === 'brawn' && card.rank != null) {
+    if (Number(card.rank) + 1 === Number(activeRank)) return true;
+  }
+
+  // Fizzlewig defensive: Spark as any suit at Rank 2
   if (defensiveSparkAsAny && card.suit === 'spark') return true;
 
   return false;
 }
 
-export function classifyPlay(card, clash) {
+export function classifyPlay(card, clash, options = {}) {
+  const { bigSwing = false, forceParry = false, defensiveSparkAsAny = false } = options;
+  if (forceParry) return 'parry';
   if (isWild(card)) return 'clean';
   if (isSpecial(card)) return 'special';
 
   const activeSuit = clash.activeSuit;
   const activeRank = Number(clash.activeRank);
-  const rank = Number(card.rank);
+  let rank = Number(card.rank);
+  if (bigSwing && card.suit === 'brawn') rank += 1;
+
+  if (defensiveSparkAsAny && card.suit === 'spark' && card.suit !== activeSuit) {
+    // Counts as Rank 2 vs active — classify vs activeRank
+    const zapRank = 2;
+    if (zapRank === activeRank) return 'parry';
+    if (zapRank > activeRank) return 'clean';
+    return 'guard';
+  }
 
   if (card.suit === activeSuit && rank > activeRank) return 'clean';
   if (rank === activeRank) return 'parry';
   if (card.suit === activeSuit && rank < activeRank) return 'guard';
-  if (card.suit === activeSuit && rank === activeRank) return 'parry';
-  // Exact rank on different suit already caught; suit match lower = guard
   return 'guard';
 }
 
 export function applyLeadCard(clash, card) {
   clash.topCard = card;
   if (isWild(card)) {
-    // Wild on lead: keep previous or require suit pick — default brawn if none
     clash.activeSuit = clash.activeSuit || 'brawn';
     clash.activeRank = 6;
   } else if (isSpecial(card)) {
@@ -84,13 +115,13 @@ export function applyLeadCard(clash, card) {
     clash.activeRank = clash.activeRank ?? 3;
   } else {
     clash.activeSuit = card.suit;
-    clash.activeRank = card.rank;
+    clash.activeRank = effectiveMonsterRank(card, clash) ?? card.rank;
   }
   clash.pile = clash.pile || [];
   clash.pile.push(card);
 }
 
-export function afterPlayUpdateActive(clash, card, chosenSuit = null) {
+export function afterPlayUpdateActive(clash, card, chosenSuit = null, options = {}) {
   clash.topCard = card;
   clash.pile = clash.pile || [];
   clash.pile.push(card);
@@ -101,38 +132,53 @@ export function afterPlayUpdateActive(clash, card, chosenSuit = null) {
   }
   if (isSpecial(card)) {
     clash.activeSuit = card.suit;
-    // keep rank-ish pressure
     clash.activeRank = clash.activeRank ?? 3;
     return;
   }
-  const kind = classifyPlay(card, {
-    activeSuit: clash.activeSuit,
-    activeRank: clash.activeRank,
-  });
-  // After play, active becomes the played card (parry/clean/guard all switch to played card's suit/rank per typical flow)
-  // Rule: Parry switches Active Suit to played card; Clean Strike keeps beating — we set to played card
+  if (options.defensiveSparkAsAny && card.suit === 'spark') {
+    clash.activeSuit = clash.activeSuit; // stay? Rule: defensive match — switch to Spark Rank 2
+    clash.activeSuit = 'spark';
+    clash.activeRank = 2;
+    return;
+  }
+  let rank = card.rank;
+  if (options.bigSwing && card.suit === 'brawn') rank = Number(card.rank) + 1;
   clash.activeSuit = card.suit;
-  clash.activeRank = card.rank;
-  return kind;
+  clash.activeRank = rank;
 }
 
-export function heroHasLegalPlay(hero, clash) {
-  return (hero.hand || []).some((c) => isLegalPlay(c, clash));
+export function heroHasLegalPlay(hero, clash, options = {}) {
+  return (hero.hand || []).some((c) => isLegalPlay(c, clash, options));
 }
 
 export function pickMonsterPlay(monsterHand, clash) {
   const legal = monsterHand.filter((c) => isLegalPlay(c, clash));
   if (!legal.length) return null;
-  // Prefer clean strikes, then parries, then anything
   const scored = legal.map((c) => {
     let score = 0;
     if (isWild(c) || isSpecial(c)) score = 5;
     else {
-      const kind = classifyPlay(c, clash);
+      // Classify using effective monster rank for Zip overtime
+      const synthetic = {
+        ...clash,
+        // compare as if card had effective rank when matching suit
+      };
+      const kind = classifyPlay(
+        clash.traitId === 'unpaid-overtime' && c.suit === 'zip' && c.rank != null
+          ? { ...c, rank: Number(c.rank) + 1 }
+          : c,
+        synthetic,
+      );
       score = kind === 'clean' ? 4 : kind === 'parry' ? 3 : 1;
     }
     return { c, score };
   });
   scored.sort((a, b) => b.score - a.score);
   return scored[0].c;
+}
+
+/** Spark +1 theme (T-03) bonus damage helper. */
+export function themeSparkBonus(themeId, card) {
+  if (themeId === 'T-03' && card?.suit === 'spark') return 1;
+  return 0;
 }
