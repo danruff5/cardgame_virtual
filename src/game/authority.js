@@ -123,6 +123,7 @@ export function applyAction(state, action, actorId) {
         next.activeHeroIndex = 0;
         next.explorationActionsLeft = 2;
         next.phase = 'exploring';
+        next.floor = { bossDefeated: false, stairsUnlocked: false, shinyKey: false };
         const theme = THEMES.find((t) => t.id === next.themeId);
         const boss = BOSSES.find((b) => b.id === next.bossId);
         appendLog(
@@ -169,11 +170,27 @@ export function applyAction(state, action, actorId) {
             appendLog(next, `Trap room! (Event resolution stub — Dealer narrates E-deck.)`);
           } else if (to.kind === 'story') {
             appendLog(next, `Story / Cart room! (Merchant/Story stub — Dealer draws.)`);
+          } else if (to.kind === 'stairs') {
+            to.cleared = true;
+            if (to.locked || !next.floor?.stairsUnlocked) {
+              appendLog(next, `Stairs are locked — defeat the Floor Boss (or Dealer unlocks via key/stunt).`);
+            }
           } else {
             to.cleared = true;
           }
         } else {
           appendLog(next, `${playerName} moves to ${to.name}.`);
+        }
+
+        // Unlocked Stairway Down: stepping on ends the floor (rulebook §5).
+        if (
+          next.phase === 'exploring' &&
+          to.kind === 'stairs' &&
+          next.floor?.stairsUnlocked &&
+          !to.locked
+        ) {
+          finishFloor(next, `${playerName} takes the Spiral Slide / Stairway Down!`);
+          break;
         }
 
         if (next.phase === 'exploring' && next.explorationActionsLeft <= 0 && !next.clash) {
@@ -199,6 +216,7 @@ export function applyAction(state, action, actorId) {
         if (next.phase !== 'clash' || !next.clash) return fail(next, 'No active clash');
         const hero = next.heroes[next.clash.heroPlayerId];
         const tile = next.map.tiles.find((t) => t.key === next.clash.roomKey);
+        const wasBoss = Boolean(next.clash.isBoss || tile?.kind === 'boss');
         if (action.result === 'win') {
           appendLog(next, `${next.clash.monsterName} goes POOF! ${hero.name} wins the clash.`);
           if (tile) {
@@ -208,6 +226,9 @@ export function applyAction(state, action, actorId) {
           hero.hand = hero.hand.filter((c) => c.type !== 'cramp');
           next.clash = null;
           next.phase = 'exploring';
+          if (wasBoss) {
+            unlockStairs(next, 'Floor Boss defeated — Shiny Basement Key found!');
+          }
           next.explorationActionsLeft = 0;
           endHeroExplorationTurn(next);
         } else if (action.result === 'flee') {
@@ -219,6 +240,30 @@ export function applyAction(state, action, actorId) {
         } else {
           return fail(next, 'Unknown clash result');
         }
+        break;
+      }
+
+      case 'unlock-stairs': {
+        // Dealer adjudicates 5+ Zip/Brawn key stunt, or recovers after a missed boss-win flag.
+        if (actor.role !== 'dealer') return fail(next, 'Dealer only');
+        if (next.phase === 'lobby' || next.phase === 'victory') {
+          return fail(next, 'No active floor');
+        }
+        unlockStairs(next, action.reason || 'Dealer unlocks the stairs (key / 5+ stunt).');
+        break;
+      }
+
+      case 'end-floor': {
+        if (actor.role !== 'dealer') return fail(next, 'Dealer only');
+        if (next.phase === 'lobby') return fail(next, 'Floor not started');
+        if (next.phase === 'victory') return fail(next, 'Floor already ended');
+        if (next.clash) {
+          next.clash = null;
+        }
+        if (!next.floor?.stairsUnlocked) {
+          unlockStairs(next, 'Dealer ends the floor and unlocks the stairs.');
+        }
+        finishFloor(next, action.message || 'Dealer calls the floor — celebrate or prep Floor 2!');
         break;
       }
 
@@ -301,11 +346,43 @@ function startClashStub(state, heroPlayerId, tile) {
     baseDmg,
     cunning,
     monsterHand,
+    isBoss: tile.kind === 'boss',
     activeSuit: null,
     activeRank: null,
-    note: 'Clash stub — full card matching UI comes later. Dealer can Resolve Win / Flee.',
+    note: tile.kind === 'boss'
+      ? 'Boss clash stub — Resolve Win unlocks the Stairway Down (Shiny Basement Key).'
+      : 'Clash stub — full card matching UI comes later. Dealer can Resolve Win / Flee.',
   };
   appendLog(state, `Clash! ${hero.name} vs ${monsterName} (${monsterHp} HP, Cunning ${cunning}).`);
+}
+
+function unlockStairs(state, reason) {
+  if (!state.floor) {
+    state.floor = { bossDefeated: false, stairsUnlocked: false, shinyKey: false };
+  }
+  state.floor.bossDefeated = true;
+  state.floor.stairsUnlocked = true;
+  state.floor.shinyKey = true;
+  for (const tile of state.map.tiles) {
+    if (tile.kind === 'stairs') {
+      tile.locked = false;
+      tile.faceUp = true;
+      tile.cleared = true;
+    }
+  }
+  appendLog(state, reason);
+  appendLog(state, 'Stairway Down is unlocked! Move a conscious Hero onto the stairs to finish the floor.');
+}
+
+function finishFloor(state, reason) {
+  state.phase = 'victory';
+  state.clash = null;
+  state.explorationActionsLeft = 0;
+  appendLog(state, reason);
+  appendLog(
+    state,
+    'Floor 1 complete! Conscious Heroes heal +3 HP (up to 10) in the full rules — MVP stops at this victory banner.',
+  );
 }
 
 function endHeroExplorationTurn(state) {

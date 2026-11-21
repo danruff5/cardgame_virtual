@@ -277,6 +277,16 @@ select {
   border-color: rgba(217, 155, 38, 0.55);
 }
 
+.map-cell.stairs-locked {
+  border-color: rgba(180, 120, 80, 0.45);
+  opacity: 0.85;
+}
+
+.map-cell.stairs-open {
+  border-color: rgba(111, 158, 122, 0.65);
+  box-shadow: inset 0 0 0 1px rgba(111, 158, 122, 0.35);
+}
+
 .map-cell.clickable {
   cursor: pointer;
 }

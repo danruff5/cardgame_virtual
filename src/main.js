@@ -319,15 +319,29 @@ function renderTable() {
             <h2>Floor 1 map</h2>
             <p class="muted" style="margin:0">${escapeHtml(theme?.name || 'Theme')} · Boss: ${escapeHtml(boss?.name || '?')} · Phase: <strong>${escapeHtml(state.phase)}</strong></p>
           </div>
-          <div class="pill">Actions left: <strong>${state.explorationActionsLeft}</strong></div>
+          <div class="row">
+            <span class="pill">Stairs: <strong>${state.floor?.stairsUnlocked ? 'UNLOCKED' : 'locked'}</strong></span>
+            ${state.phase !== 'victory' ? `<span class="pill">Actions left: <strong>${state.explorationActionsLeft}</strong></span>` : ''}
+          </div>
         </div>
-        <p>Active: <strong>${escapeHtml(activePlayer?.name || '—')}</strong>${state.phase === 'clash' ? ' · in clash!' : ''}</p>
+        ${
+          state.phase === 'victory'
+            ? `<div class="panel" style="box-shadow:none;border-color:rgba(111,158,122,0.55)">
+                <h3>Floor 1 complete!</h3>
+                <p>The Spiral Slide is open. Celebrate the ~30-minute checkpoint, or prep Floor 2 later.</p>
+              </div>`
+            : `<p>Active: <strong>${escapeHtml(activePlayer?.name || '—')}</strong>${state.phase === 'clash' ? ' · in clash!' : ''}${
+                state.floor?.stairsUnlocked
+                  ? ' · Move onto the <strong>Stairway Down</strong> to finish.'
+                  : ''
+              }</p>`
+        }
         ${renderMap(state, isDealer, meId)}
         ${
           state.phase === 'clash' && state.clash
             ? `
           <div class="panel" style="box-shadow:none;border-color:rgba(217,72,59,0.35)">
-            <h3>Clash stub</h3>
+            <h3>${state.clash.isBoss ? 'Boss clash stub' : 'Clash stub'}</h3>
             <p><strong>${escapeHtml(state.clash.monsterName)}</strong> — HP ${state.clash.monsterHp}/${state.clash.monsterMaxHp} · Base ${state.clash.baseDmg} · Cunning ${state.clash.cunning}</p>
             <p class="muted">${escapeHtml(state.clash.note)}</p>
             ${
@@ -387,11 +401,28 @@ function renderMap(state, isDealer, meId) {
         .join('');
       const movable =
         canMove && from && adjacentOrthogonal(from, tile) && !state.clash;
-      const label = tile.faceUp ? tile.name : '???';
+      let label = tile.faceUp ? tile.name : '???';
+      if (tile.kind === 'stairs' && tile.faceUp) {
+        label = tile.locked || !state.floor?.stairsUnlocked ? 'Stairs 🔒' : 'Stairs ✓';
+      }
+      const stairsClass =
+        tile.kind === 'stairs' && tile.faceUp
+          ? state.floor?.stairsUnlocked && !tile.locked
+            ? 'stairs-open'
+            : 'stairs-locked'
+          : '';
       cells.push(`
-        <button type="button" class="map-cell ${tile.faceUp ? 'face-up' : 'face-down'} ${tile.kind} ${movable ? 'clickable' : ''}"
+        <button type="button" class="map-cell ${tile.faceUp ? 'face-up' : 'face-down'} ${tile.kind} ${stairsClass} ${movable ? 'clickable' : ''}"
           ${movable ? `data-move-x="${tile.x}" data-move-y="${tile.y}"` : 'disabled'}
-          title="${escapeAttr(tile.faceUp ? tile.rule || tile.name : 'Face-down room')}">
+          title="${escapeAttr(
+            tile.faceUp
+              ? tile.kind === 'stairs'
+                ? state.floor?.stairsUnlocked
+                  ? 'Unlocked — step here to finish the floor'
+                  : 'Locked until Floor Boss is defeated (or Dealer unlocks)'
+                : tile.rule || tile.name
+              : 'Face-down room',
+          )}">
           <span>${escapeHtml(label)}</span>
           ${pawns}
         </button>`);
@@ -401,6 +432,7 @@ function renderMap(state, isDealer, meId) {
 }
 
 function renderDealerTools(state) {
+  const stairsOpen = Boolean(state.floor?.stairsUnlocked);
   return `
     <div class="stack">
       <p class="muted">You are the authority host. Local stub seats can be moved with the map (dealer puppets the active turn).</p>
@@ -408,6 +440,13 @@ function renderDealerTools(state) {
         Decks — action ${state.decks.actionCount ?? '—'} · desperation ${state.decks.desperationCount ?? '—'} ·
         monsters ${state.decks.monstersCount ?? '—'} · twists ${state.decks.twistsCount ?? '—'}
       </div>
+      <h3>Floor progress</h3>
+      <p class="muted" style="margin:0">Boss defeated: ${state.floor?.bossDefeated ? 'yes' : 'no'} · Stairs: ${stairsOpen ? 'unlocked' : 'locked'} · Key: ${state.floor?.shinyKey ? 'yes' : 'no'}</p>
+      <div class="row">
+        <button type="button" id="btn-unlock-stairs" ${stairsOpen || state.phase === 'victory' ? 'disabled' : ''}>Unlock stairs (key / 5+ stunt)</button>
+        <button class="primary" type="button" id="btn-end-floor" ${state.phase === 'victory' ? 'disabled' : ''}>End floor / victory</button>
+      </div>
+      <p class="muted">Boss <strong>Resolve: Hero wins</strong> also unlocks stairs. Heroes then move onto the Stairway Down — or use <strong>End floor</strong> to wrap up.</p>
       <div class="field">
         <label for="dealer-note">Narrate / note</label>
         <input id="dealer-note" maxlength="120" placeholder="The cocoa smells suspicious…" />
@@ -496,6 +535,12 @@ function wireTable() {
   document.getElementById('btn-dealer-log')?.addEventListener('click', () => {
     const message = document.getElementById('dealer-note')?.value?.trim();
     if (message) room.dispatch({ type: 'dealer-log', message });
+  });
+  document.getElementById('btn-unlock-stairs')?.addEventListener('click', () => {
+    room.dispatch({ type: 'unlock-stairs', reason: 'Dealer unlocks stairs (Shiny Key / 5+ Zip or Brawn stunt).' });
+  });
+  document.getElementById('btn-end-floor')?.addEventListener('click', () => {
+    room.dispatch({ type: 'end-floor', message: 'Dealer ends Floor 1 — victory!' });
   });
 }
 

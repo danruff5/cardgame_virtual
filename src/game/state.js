@@ -21,10 +21,15 @@ export function createEmptyState(roomCode, hostPlayerId, hostName) {
   return {
     version: 1,
     roomCode,
-    phase: 'lobby', // lobby | exploring | clash
+    phase: 'lobby', // lobby | exploring | clash | victory
     log: [`Room ${roomCode} opened. Waiting for heroes…`],
     themeId: null,
     bossId: null,
+    floor: {
+      bossDefeated: false,
+      stairsUnlocked: false,
+      shinyKey: false,
+    },
     players: [
       {
         id: hostPlayerId,
