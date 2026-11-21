@@ -19,48 +19,53 @@
 .vcard {
   --accent: var(--cbc-ink);
   position: relative;
-  width: 140px;
-  height: 196px;
+  width: 168px;
+  height: 236px;
   border: 1px solid rgba(59, 49, 43, 0.35);
   background: var(--cbc-parchment);
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex-direction: column;
-  padding: 8px;
+  padding: 9px;
   border-radius: 8px;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
   color: var(--cbc-ink);
   font-family: "Trebuchet MS", "Segoe UI", sans-serif;
   flex-shrink: 0;
   text-align: left;
+  z-index: 1;
+}
+
+.vcard:hover {
+  z-index: 40;
 }
 
 .vcard.size-mini {
-  width: 72px;
-  height: 100px;
-  padding: 4px;
+  width: 88px;
+  height: 122px;
+  padding: 5px;
   border-radius: 6px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
 }
 
 .vcard.size-hand {
-  width: 96px;
-  height: 134px;
-  padding: 5px;
+  width: 118px;
+  height: 164px;
+  padding: 6px;
 }
 
 .vcard.size-square,
 .vcard.card-square {
-  width: 110px;
-  height: 110px;
+  width: 128px;
+  height: 128px;
   padding: 6px;
 }
 
 .vcard.size-square.size-mini,
 .vcard.card-square.size-mini {
-  width: 78px;
-  height: 78px;
-  padding: 4px;
+  width: 100%;
+  height: 100%;
+  padding: 0;
 }
 
 .vcard .layer-frame {
@@ -361,35 +366,133 @@
 
 .map-cell.with-art {
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
   background: var(--cbc-parchment);
 }
 
-.map-cell.with-art .map-tile-card {
+.map-cell.with-art:hover,
+.map-tile-wrap:hover {
+  z-index: 30;
+}
+
+.map-tile-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.map-tile-card.room-bleed {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   border: none;
   box-shadow: none;
-  border-radius: 11px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #2a2118;
+}
+
+.map-tile-card.room-bleed .room-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  z-index: 1;
+}
+
+.map-tile-card.room-bleed .room-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  z-index: 2;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  opacity: 0.92;
+}
+
+.map-tile-card.room-bleed .door {
+  z-index: 3;
 }
 
 .map-cell.with-art .map-label {
   position: absolute;
-  left: 3px;
-  right: 3px;
-  bottom: 2px;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
   z-index: 7;
-  font-size: 0.62rem;
+  font-size: 0.72rem;
   font-weight: 800;
   color: #fffdf8;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
   pointer-events: none;
+}
+
+.card-hover-tip {
+  display: none;
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  width: max(220px, 100%);
+  max-width: 280px;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  background: rgba(30, 24, 18, 0.96);
+  border: 1px solid rgba(243, 230, 208, 0.28);
+  color: #f3e6d0;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  z-index: 50;
+  pointer-events: none;
+  text-align: left;
+}
+
+.vcard:hover > .card-hover-tip,
+.map-tile-wrap:hover > .card-hover-tip,
+.clash-card-btn:hover .card-hover-tip {
+  display: block;
+}
+
+.clash-card-btn {
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+
+.clash-card-btn:hover {
+  z-index: 45;
+}
+
+.card-hover-tip .tip-title {
+  font-weight: 800;
+  font-size: 0.82rem;
+  margin-bottom: 0.25rem;
+  color: #ffe4a3;
+}
+
+.card-hover-tip .tip-rules {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #f3e6d0;
+}
+
+.card-hover-tip .tip-flavor {
+  margin-top: 0.35rem;
+  font-size: 0.74rem;
+  font-style: italic;
+  color: #b9a48a;
+  border-top: 1px dotted rgba(200, 187, 168, 0.45);
+  padding-top: 0.3rem;
 }
 
 .hero-pick-card {
   display: grid;
-  grid-template-columns: 140px 1fr;
-  gap: 0.75rem;
+  grid-template-columns: 168px 1fr;
+  gap: 0.85rem;
   align-items: start;
 }
 
@@ -406,6 +509,7 @@
   padding: 0;
   border-radius: 10px;
   cursor: default;
+  overflow: visible;
 }
 
 .clash-card-btn.legal {

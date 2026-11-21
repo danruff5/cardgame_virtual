@@ -49,9 +49,15 @@ body {
 }
 
 #app {
-  max-width: 1100px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 1.25rem 1rem 3rem;
+  padding: 1.4rem 1.25rem 3rem;
+}
+
+@media (min-width: 1100px) {
+  #app {
+    font-size: 1.05rem;
+  }
 }
 
 h1,
@@ -240,19 +246,27 @@ select {
 }
 
 .map-cell {
-  width: min(24vw, 96px);
-  height: min(24vw, 96px);
+  width: min(22vw, 132px);
+  height: min(22vw, 132px);
   border-radius: 12px;
   border: 1px solid var(--line);
   background: rgba(0, 0, 0, 0.28);
   display: grid;
   place-items: center;
   text-align: center;
-  padding: 0.3rem;
-  font-size: 0.72rem;
+  padding: 0;
+  font-size: 0.78rem;
   line-height: 1.2;
   position: relative;
+  overflow: hidden;
   transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+@media (min-width: 1100px) {
+  .map-cell {
+    width: 140px;
+    height: 140px;
+  }
 }
 
 .map-cell.face-down {
@@ -304,12 +318,13 @@ select {
 
 .pawn {
   position: absolute;
-  bottom: 4px;
-  width: 12px;
-  height: 12px;
+  bottom: 6px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.4);
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.25);
+  z-index: 8;
 }
 
 .hand {

@@ -45,6 +45,17 @@ function artImg(file) {
   return `<img class="layer-art" src="${ASSET.art(file)}" alt="" onerror="this.style.display='none'">`;
 }
 
+function hoverTipHtml(title, rulesPlain, flavorPlain) {
+  const rules = String(rulesPlain || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const flavor = String(flavorPlain || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!rules && !flavor) return '';
+  return `<div class="card-hover-tip" role="tooltip">
+    <div class="tip-title">${esc(title)}</div>
+    ${rules ? `<div class="tip-rules">${esc(rules)}</div>` : ''}
+    ${flavor ? `<div class="tip-flavor">${esc(flavor)}</div>` : ''}
+  </div>`;
+}
+
 /**
  * Shared 4-layer card shell (same structure as print_and_play.html).
  */
@@ -60,6 +71,8 @@ export function renderCompositorCard({
   glyph,
   rules = '',
   flavor = '',
+  tipRules = '',
+  tipFlavor = '',
   size = 'table', // mini | hand | table | square
   square = false,
   doors = false,
@@ -84,7 +97,9 @@ export function renderCompositorCard({
       </div>
       <div class="card-footer"><span>${esc(id)}</span><span>${esc(badge || '')}</span></div>`;
 
-  return `<div class="vcard ${sizeClass} ${extraClass}" style="--accent:${accent}" title="${esc(title)}">
+  const tip = hoverTipHtml(title, tipRules || rules, tipFlavor || flavor);
+
+  return `<div class="vcard ${sizeClass} ${extraClass}" style="--accent:${accent}">
     ${frameImg(frame)}
     <div class="frame-fallback"></div>
     ${doorsHtml}
@@ -101,6 +116,7 @@ export function renderCompositorCard({
       </div>
       ${body}
     </div>
+    ${tip}
   </div>`;
 }
 
@@ -135,6 +151,8 @@ export function renderActionCard(card, { size = 'hand' } = {}) {
       art: 'art_cramp_charley_horse.png',
       icon: SPECIAL_ICONS.cramp,
       glyph: 'M5 5L19 19M19 5L5 19',
+      tipRules: 'Unplayable on Clash Pile. Instead of playing, discard up to 2 Cramp! to stretch. Clears when combat ends.',
+      tipFlavor: 'Ouch! Too many dramatic swings without stretching!',
       size,
       compact: true,
       extraClass: 'card-cramp',
@@ -152,6 +170,8 @@ export function renderActionCard(card, { size = 'hand' } = {}) {
       art: m.art,
       icon: m.icon,
       glyph: m.glyph,
+      tipRules: 'Play on ANY card! Deal Weapon Strike damage and pick the new Active Suit.',
+      tipFlavor: 'Cue the heroic trumpet fanfare!',
       size,
       compact: true,
     });
@@ -164,6 +184,21 @@ export function renderActionCard(card, { size = 'hand' } = {}) {
         : card.kind === 'bounce'
           ? SPECIAL_ICONS.bounce
           : SPECIAL_ICONS.tuckered;
+    const tips = {
+      daze: {
+        rules: `Play on ${m.label} or another Daze!. Target misses their next turn; you play again!`,
+        flavor: 'Whoa... shiny spinning stars!',
+      },
+      bounce: {
+        rules: `Play on ${m.label} or Bounce Back!. Reflects 1 Dmg; flips Boss table turn order!`,
+        flavor: 'Boing! Right back at ya!',
+      },
+      tuckered: {
+        rules: `Play on ${m.label} or Tuckered Out!. Monster: 2 direct Dmg. Hero: draw 2 Cramp!.`,
+        flavor: 'Oof, time for a quick breather...',
+      },
+    };
+    const tip = tips[card.kind] || { rules: card.name, flavor: '' };
     return renderCompositorCard({
       id: card.id,
       title: card.name,
@@ -174,6 +209,8 @@ export function renderActionCard(card, { size = 'hand' } = {}) {
       art: m.art,
       icon,
       glyph: m.glyph,
+      tipRules: tip.rules,
+      tipFlavor: tip.flavor,
       size,
       compact: true,
     });
@@ -190,6 +227,8 @@ export function renderActionCard(card, { size = 'hand' } = {}) {
     art: m.art,
     icon: m.icon,
     glyph: m.glyph,
+    tipRules: `Play on ${m.label} OR any Rank ${card.rank}. Higher same-suit Rank = Clean Strike; exact Rank = Parry; lower same-suit = Guard.`,
+    tipFlavor: `Action Deck • ${m.label} Suit`,
     size,
     compact: true,
   });
@@ -211,6 +250,8 @@ export function renderHeroCard(heroId, { size = 'table', downed = false } = {}) 
     glyph: suit.glyph,
     rules: size === 'table' ? `<i>${esc(hero.title)}</i><br><b>${esc(hero.perk.name)}:</b> ${esc(hero.perk.text)}` : '',
     flavor: size === 'table' ? `"${esc(hero.flavor)}"` : '',
+    tipRules: `${hero.title}. ${hero.perk.name}: ${hero.perk.text}`,
+    tipFlavor: hero.flavor,
     size,
     compact: size !== 'table',
     extraClass: 'card-hero',
@@ -230,35 +271,37 @@ export function renderGearChip(gearId, { size = 'mini' } = {}) {
     art,
     icon: g.tier === 0 || g.tier === 'belt' ? 'icon_tuck_arrow.png' : 'icon_tier_star.png',
     glyph: 'M12 2L15 9L22 9L16 14L18 21L12 17L6 21L8 14L2 9L9 9Z',
+    tipRules: g.rule,
+    tipFlavor: g.flavor,
     size,
     compact: true,
     extraClass: 'card-gear',
   });
 }
 
-export function renderRoomTile(tile, { size = 'mini', stairsUnlocked = false } = {}) {
+/** Map room tile — art bleeds edge-to-edge with cover crop (not letterboxed). */
+export function renderRoomTile(tile, { stairsUnlocked = false } = {}) {
   if (!tile) return '';
   if (!tile.faceUp) {
-    return renderCardBack({ kind: 'room', size: 'mini', label: 'Face-down room' });
+    return `<div class="map-tile-wrap">
+      <div class="map-tile-card room-bleed face-down-tile">
+        <img class="room-art" src="${ASSET.frames(ROOM_BACK)}" alt="" />
+      </div>
+      ${hoverTipHtml('Unexplored room', 'Face-down Square Room — move here to flip it.', '')}
+    </div>`;
   }
   const room = getRoom(tile.roomId);
   const art = ROOM_ART[tile.kind] || 'art_room_hall.png';
   const lockedStairs = tile.kind === 'stairs' && (tile.locked || !stairsUnlocked);
-  return renderCompositorCard({
-    id: tile.roomId,
-    title: lockedStairs ? 'Stairs 🔒' : room?.name || tile.name,
-    badge: (tile.kind || 'ROOM').toUpperCase(),
-    accent: tile.kind === 'boss' ? '#D99B26' : tile.kind === 'monster' ? '#544663' : '#6A6570',
-    frame: 'frame_room_square.png',
-    art,
-    icon: 'icon_doorway.png',
-    glyph: 'M6 21V8A6 6 0 0 1 18 8V21H6Z',
-    size: 'square',
-    square: true,
-    doors: true,
-    compact: true,
-    extraClass: `map-tile-card ${lockedStairs ? 'stairs-locked' : ''}`,
-  });
+  const title = lockedStairs ? 'Stairs (locked)' : room?.name || tile.name;
+  return `<div class="map-tile-wrap">
+    <div class="map-tile-card room-bleed ${lockedStairs ? 'stairs-locked' : ''}">
+      <img class="room-art" src="${ASSET.art(art)}" alt="" />
+      <img class="room-frame" src="${ASSET.frames('frame_room_square.png')}" alt="" />
+      <div class="door door-n">▲</div><div class="door door-s">▼</div><div class="door door-w">◄</div><div class="door door-e">►</div>
+    </div>
+    ${hoverTipHtml(title, room?.rule || tile.rule, room?.flavor || tile.flavor)}
+  </div>`;
 }
 
 export function renderMonsterCard(monsterId, { size = 'table', hp, maxHp, isBoss = false } = {}) {
@@ -294,6 +337,8 @@ export function renderMonsterCard(monsterId, { size = 'table', hp, maxHp, isBoss
     glyph: 'M12 2L15 9L22 9L16 14L18 21L12 17L6 21L8 14L2 9L9 9Z',
     rules: size === 'table' ? `${hpLine}${esc(mon.trait)}` : hpLine,
     flavor: size === 'table' ? `"${esc(mon.flavor)}"` : '',
+    tipRules: mon.trait,
+    tipFlavor: mon.flavor,
     size,
     compact: size === 'mini',
     extraClass: 'card-monster',
