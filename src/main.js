@@ -1,5 +1,6 @@
 import './style.css';
 import './ui/cards.css';
+import './ui/coachmarks.css';
 import { PeerRoom, readRoomFromUrl, buildJoinUrl } from './net/peerRoom.js';
 import { dataInventory, HEROES, THEMES, BOSSES, SUITS } from './data/index.js';
 import { adjacentOrthogonal, tilesConnect } from './game/state.js';
@@ -12,6 +13,12 @@ import {
 } from './ui/cardView.js';
 import { ASSET, SUIT_META } from './data/artMeta.js';
 import { isLegalPlay, isCramp, heroHasLegalPlay } from './game/clash.js';
+import {
+  bindCoachMenu,
+  renderCoachUi,
+  setCoachChangeHandler,
+  syncCoachAfterRender,
+} from './ui/coachmarks.js';
 
 document.documentElement.style.setProperty(
   '--bg-art',
@@ -28,7 +35,40 @@ const session = {
   error: '',
   name: localStorage.getItem('cbc-name') || '',
   joining: false,
+  coachMenuOpen: false,
 };
+
+function coachContext() {
+  if (!session.state) return { screen: 'lobby-shell', phase: null, isDealer: false };
+  if (session.state.phase === 'lobby') {
+    return { screen: 'lobby-game', phase: 'lobby', isDealer: Boolean(session.meta?.isHost) };
+  }
+  return {
+    screen: 'table',
+    phase: session.state.phase,
+    isDealer: Boolean(session.meta?.isHost),
+  };
+}
+
+function paintCoach() {
+  renderCoachUi({
+    context: coachContext(),
+    menuOpen: session.coachMenuOpen,
+  });
+}
+
+bindCoachMenu({
+  getMenuOpen: () => session.coachMenuOpen,
+  setMenuOpen: (open) => {
+    session.coachMenuOpen = open;
+    paintCoach();
+  },
+  getContext: () => coachContext(),
+});
+
+setCoachChangeHandler(() => {
+  paintCoach();
+});
 
 const room = new PeerRoom({
   onState: (state, meta) => {
@@ -56,15 +96,15 @@ function render() {
   if (!session.state) {
     app.innerHTML = renderLobbyShell();
     wireLobby();
-    return;
-  }
-  if (session.state.phase === 'lobby') {
+  } else if (session.state.phase === 'lobby') {
     app.innerHTML = renderLobbyGame();
     wireLobbyGame();
-    return;
+  } else {
+    app.innerHTML = renderTable();
+    wireTable();
   }
-  app.innerHTML = renderTable();
-  wireTable();
+  syncCoachAfterRender(coachContext());
+  paintCoach();
 }
 
 function brand() {
@@ -237,10 +277,10 @@ function renderLobbyGame() {
             </select>
           </div>
         `
-            : `<p class="muted">Waiting for the dealer to start the floor…</p>`
+            : `<p class="muted" data-coach="waiting-start">Waiting for the dealer to start the floor…</p>`
         }
       </section>
-      <section class="panel stack">
+      <section class="panel stack" data-coach="hero-picks">
         <h2>Pick a hero</h2>
         <p>Four archetypes from the catalog. Dealer assigns local seats; remote heroes pick for themselves.</p>
         <div class="stack">
@@ -350,7 +390,7 @@ function renderTable() {
           </div>
           <div class="row">
             <span class="pill">Stairs: <strong>${state.floor?.stairsUnlocked ? 'UNLOCKED' : 'locked'}</strong></span>
-            ${state.phase !== 'victory' ? `<span class="pill">Actions left: <strong>${state.explorationActionsLeft}</strong></span>` : ''}
+            ${state.phase !== 'victory' ? `<span class="pill" data-coach="actions-left">Actions left: <strong>${state.explorationActionsLeft}</strong></span>` : ''}
           </div>
         </div>
         ${
@@ -379,7 +419,7 @@ function renderTable() {
           }
         </div>
       </section>
-      <section class="panel stack">
+      <section class="panel stack" data-coach="side-panel">
         <h2>${isDealer ? 'Dealer tools' : 'Your hero'}</h2>
         ${isDealer ? renderDealerTools(state) : ''}
         ${renderHeroPanels(state, meId, isDealer)}
@@ -415,7 +455,7 @@ function renderClashPanel(state, isDealer, meId) {
   const hasCookie = hero?.offhand?.id === 'G-17' && !hero.offhand.tapped;
 
   return `
-    <div class="panel clash-panel" style="box-shadow:none;border-color:rgba(217,72,59,0.45)">
+    <div class="panel clash-panel" data-coach="clash" style="box-shadow:none;border-color:rgba(217,72,59,0.45)">
       <div class="row" style="justify-content:space-between;align-items:flex-start">
         <div>
           <h3>${clash.isBoss ? 'Boss Clash' : 'Clash & Chain'}</h3>
@@ -520,12 +560,12 @@ function renderClashPanel(state, isDealer, meId) {
         }
         ${
           !canPlay && !canMonster && clash.whoseTurn === 'monster'
-            ? `<p class="muted">Waiting for dealer to resolve the monster turn…</p>`
+            ? `<p class="muted" data-coach="clash-wait">Waiting for dealer to resolve the monster turn…</p>`
             : ''
         }
         ${
           !canPlay && clash.whoseTurn === 'hero' && !isMyClash
-            ? `<p class="muted">Waiting for ${escapeHtml(hero?.name || 'hero')} to play…</p>`
+            ? `<p class="muted" data-coach="clash-wait">Waiting for ${escapeHtml(hero?.name || 'hero')} to play…</p>`
             : ''
         }
       </div>
@@ -648,7 +688,7 @@ function renderMap(state, isDealer, meId) {
     (state.map.barriers || []).length > 0
       ? `<p class="muted">Sticky Door Jam active (${state.map.barriers.length}) — pry with a Brawn 3+ Stunt.</p>`
       : '';
-  return `${jamNote}<div class="map-grid" style="grid-template-columns:repeat(${state.map.width}, auto)">${cells.join('')}</div>`;
+  return `${jamNote}<div class="map-grid" data-coach="map" style="grid-template-columns:repeat(${state.map.width}, auto)">${cells.join('')}</div>`;
 }
 
 function shortRoomLabel(tile) {
@@ -669,7 +709,7 @@ function shortRoomLabel(tile) {
 function renderDealerTools(state) {
   const stairsOpen = Boolean(state.floor?.stairsUnlocked);
   return `
-    <div class="stack">
+    <div class="stack" data-coach="dealer-tools">
       <p class="muted">You are the authority host. Local stub seats can be moved with the map (dealer puppets the active turn).</p>
       <div class="inventory">
         Decks — action ${state.decks.actionCount ?? '—'} · loot ${state.decks.lootCount ?? '—'} ·
