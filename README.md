@@ -75,12 +75,19 @@ Still lighter than the full table: free-form stunts, full twist table adjudicati
 
 ## Git branching
 
-Gameplay work no longer lands straight on `main`.
+Gameplay integrates through a **release** branch so multiple agents can land small features without deploying.
 
-1. Branch from latest `origin/main`: `git checkout -b feature/<short-name>`
+```
+feature/*  →  PR  →  release/*  →  PR (when ready)  →  main  →  Pages
+```
+
+1. Branch from the active release (or `main` if none): `git checkout -b feature/<short-name>`
 2. Commit on the feature branch; push: `git push -u origin HEAD`
-3. Open a **PR into `main`** (GitHub UI or `gh pr create`). Review / merge when Daniel says so.
-4. **GitHub Pages deploys only from `main`** via `.github/workflows/pages.yml` (GitHub Actions). Do **not** re-enable “Deploy from a branch” — that serves unbuilt source and white-screens the custom domain.
+3. Open a **PR into `release/<name>`** (e.g. `release/floor1`) — not into `main`.
+4. When the release is ready, open **one PR from `release/*` → `main`**. Merge only when Daniel says so.
+5. **GitHub Pages deploys only from `main`** via `.github/workflows/pages.yml` (GitHub Actions). Do **not** re-enable “Deploy from a branch”.
+
+Current integration branch: **`release/floor1`**.
 
 ## Deploy to GitHub Pages → cardgame.ruffarc.ca
 
