@@ -24,13 +24,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      # Optimized WebP already committed under public/assets — skip regenerate
-      - run: npm run build --ignore-scripts
-        env:
-          # ensure vite still builds if prebuild is skipped
-          npm_config_ignore_scripts: true
-      - name: Build (with prebuild skipped safely)
-        run: npx vite build
+      # public/assets WebP is committed; skip sharp optimize on CI
+      - run: npx vite build
       - name: Verify CNAME
         run: |
           test -f dist/CNAME
