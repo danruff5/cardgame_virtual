@@ -45,7 +45,7 @@ function artImg(file) {
   return `<img class="layer-art" src="${ASSET.art(file)}" alt="" onerror="this.style.display='none'">`;
 }
 
-function hoverTipHtml(title, rulesPlain, flavorPlain) {
+export function hoverTipHtml(title, rulesPlain, flavorPlain) {
   const rules = String(rulesPlain || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   const flavor = String(flavorPlain || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   if (!rules && !flavor) return '';
@@ -54,6 +54,62 @@ function hoverTipHtml(title, rulesPlain, flavorPlain) {
     ${rules ? `<div class="tip-rules">${esc(rules)}</div>` : ''}
     ${flavor ? `<div class="tip-flavor">${esc(flavor)}</div>` : ''}
   </div>`;
+}
+
+/** Rules + flavor for action / special / wild / cramp — shared by cards and combat-log hovers. */
+export function tipDataForActionCard(card) {
+  if (!card || card.hidden) {
+    return {
+      title: 'Face-down Action',
+      rules: 'Opponent hand — face hidden.',
+      flavor: '',
+    };
+  }
+  if (card.type === 'cramp') {
+    return {
+      title: 'Cramp!',
+      rules: 'Unplayable on Clash Pile. Instead of playing, discard up to 2 Cramp! to stretch. Clears when combat ends.',
+      flavor: 'Ouch! Too many dramatic swings without stretching!',
+    };
+  }
+  if (card.type === 'wild' || card.kind === 'wild') {
+    return {
+      title: 'Heroic Wild!',
+      rules: 'Play on ANY card! Deal Weapon Strike damage and pick the new Active Suit.',
+      flavor: 'Cue the heroic trumpet fanfare!',
+    };
+  }
+  if (card.type === 'special') {
+    const m = SUIT_META[card.suit] || SUIT_META.brawn;
+    const tips = {
+      daze: {
+        rules: `Play on ${m.label} or another Daze!. Target misses their next turn; you play again!`,
+        flavor: 'Whoa... shiny spinning stars!',
+      },
+      bounce: {
+        rules: `Play on ${m.label} or Bounce Back!. Reflects 1 Dmg; flips Boss table turn order!`,
+        flavor: 'Boing! Right back at ya!',
+      },
+      tuckered: {
+        rules: `Play on ${m.label} or Tuckered Out!. Monster: 2 direct Dmg. Hero: draw 2 Cramp!.`,
+        flavor: 'Oof, time for a quick breather...',
+      },
+    };
+    const tip = tips[card.kind] || { rules: card.name || 'Special', flavor: '' };
+    return { title: card.name || 'Special', rules: tip.rules, flavor: tip.flavor };
+  }
+  const m = SUIT_META[card.suit] || SUIT_META.brawn;
+  return {
+    title: `${m.label} ${card.rank}`,
+    rules: `Play on ${m.label} OR any Rank ${card.rank}. Higher same-suit Rank = Clean Strike; exact Rank = Parry; lower same-suit = Guard.`,
+    flavor: `Action Deck • ${m.label} Suit`,
+  };
+}
+
+/** Inline log mention with the same dull/flavor hover tip used on compositor cards. */
+export function renderCardMention(label, tip) {
+  if (!tip?.rules && !tip?.flavor) return esc(label);
+  return `<span class="log-card-mention">${esc(label)}${hoverTipHtml(tip.title || label, tip.rules, tip.flavor)}</span>`;
 }
 
 /**
@@ -141,18 +197,19 @@ export function renderActionCard(card, { size = 'hand' } = {}) {
   if (!card || card.hidden) {
     return renderCardBack({ kind: 'action', size });
   }
+  const tip = tipDataForActionCard(card);
   if (card.type === 'cramp') {
     return renderCompositorCard({
       id: card.id,
-      title: 'Cramp!',
+      title: tip.title,
       badge: 'FATIGUE',
       accent: '#B86B82',
       frame: 'frame_cramp.png',
       art: 'art_cramp_charley_horse.png',
       icon: SPECIAL_ICONS.cramp,
       glyph: 'M5 5L19 19M19 5L5 19',
-      tipRules: 'Unplayable on Clash Pile. Instead of playing, discard up to 2 Cramp! to stretch. Clears when combat ends.',
-      tipFlavor: 'Ouch! Too many dramatic swings without stretching!',
+      tipRules: tip.rules,
+      tipFlavor: tip.flavor,
       size,
       compact: true,
       extraClass: 'card-cramp',
@@ -162,7 +219,7 @@ export function renderActionCard(card, { size = 'hand' } = {}) {
     const m = SUIT_META.wild;
     return renderCompositorCard({
       id: card.id,
-      title: 'Heroic Wild!',
+      title: tip.title,
       badge: 'ANY',
       rank: 'W',
       accent: m.color,
@@ -170,8 +227,8 @@ export function renderActionCard(card, { size = 'hand' } = {}) {
       art: m.art,
       icon: m.icon,
       glyph: m.glyph,
-      tipRules: 'Play on ANY card! Deal Weapon Strike damage and pick the new Active Suit.',
-      tipFlavor: 'Cue the heroic trumpet fanfare!',
+      tipRules: tip.rules,
+      tipFlavor: tip.flavor,
       size,
       compact: true,
     });
@@ -184,24 +241,9 @@ export function renderActionCard(card, { size = 'hand' } = {}) {
         : card.kind === 'bounce'
           ? SPECIAL_ICONS.bounce
           : SPECIAL_ICONS.tuckered;
-    const tips = {
-      daze: {
-        rules: `Play on ${m.label} or another Daze!. Target misses their next turn; you play again!`,
-        flavor: 'Whoa... shiny spinning stars!',
-      },
-      bounce: {
-        rules: `Play on ${m.label} or Bounce Back!. Reflects 1 Dmg; flips Boss table turn order!`,
-        flavor: 'Boing! Right back at ya!',
-      },
-      tuckered: {
-        rules: `Play on ${m.label} or Tuckered Out!. Monster: 2 direct Dmg. Hero: draw 2 Cramp!.`,
-        flavor: 'Oof, time for a quick breather...',
-      },
-    };
-    const tip = tips[card.kind] || { rules: card.name, flavor: '' };
     return renderCompositorCard({
       id: card.id,
-      title: card.name,
+      title: tip.title,
       badge: m.label,
       rank: card.kind === 'daze' ? '★' : card.kind === 'bounce' ? '⇄' : '+2',
       accent: m.color,
@@ -219,7 +261,7 @@ export function renderActionCard(card, { size = 'hand' } = {}) {
   const m = SUIT_META[card.suit] || SUIT_META.brawn;
   return renderCompositorCard({
     id: card.id,
-    title: `${m.label} ${card.rank}`,
+    title: tip.title,
     badge: m.label,
     rank: card.rank,
     accent: m.color,
@@ -227,8 +269,8 @@ export function renderActionCard(card, { size = 'hand' } = {}) {
     art: m.art,
     icon: m.icon,
     glyph: m.glyph,
-    tipRules: `Play on ${m.label} OR any Rank ${card.rank}. Higher same-suit Rank = Clean Strike; exact Rank = Parry; lower same-suit = Guard.`,
-    tipFlavor: `Action Deck • ${m.label} Suit`,
+    tipRules: tip.rules,
+    tipFlavor: tip.flavor,
     size,
     compact: true,
   });
