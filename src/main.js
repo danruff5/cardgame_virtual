@@ -9,16 +9,21 @@ import {
   renderHeroCard,
   renderGearChip,
   renderRoomTile,
-  renderMonsterCard,
 } from './ui/cardView.js';
 import { ASSET, SUIT_META } from './data/artMeta.js';
-import { isLegalPlay, isCramp, heroHasLegalPlay } from './game/clash.js';
 import {
   bindCoachMenu,
   renderCoachUi,
   setCoachChangeHandler,
   syncCoachAfterRender,
 } from './ui/coachmarks.js';
+import {
+  renderClashModal,
+  consumeClashFx,
+  wireClashModal,
+  wireTableLogHovers,
+  formatCombatLogLine,
+} from './ui/clashModal.js';
 
 document.documentElement.style.setProperty(
   '--bg-art',
@@ -372,16 +377,16 @@ function renderTable() {
   const state = session.state;
   const isDealer = session.meta?.isHost;
   const meId = session.meta?.playerId;
-  const myHero = state.heroes[meId];
   const activeId = state.turnOrder[state.activeHeroIndex];
   const activePlayer = state.players.find((p) => p.id === activeId);
   const theme = THEMES.find((t) => t.id === state.themeId);
   const boss = BOSSES.find((b) => b.id === state.bossId);
+  const clashFx = consumeClashFx(session, state);
 
   return `
     ${brand()}
     ${statusBar()}
-    <div class="game-layout">
+    <div class="game-layout ${state.phase === 'clash' ? 'clash-dimmed' : ''}">
       <section class="panel stack">
         <div class="row" style="justify-content:space-between">
           <div>
@@ -408,9 +413,6 @@ function renderTable() {
         ${renderMap(state, isDealer, meId)}
         ${renderPending(state, isDealer, meId)}
         ${renderRoomActions(state, isDealer, meId)}
-        ${
-          state.phase === 'clash' && state.clash ? renderClashPanel(state, isDealer, meId) : ''
-        }
         <div class="row">
           ${
             (isDealer || meId === activeId) && state.phase === 'exploring' && !state.pending
@@ -424,152 +426,14 @@ function renderTable() {
         ${isDealer ? renderDealerTools(state) : ''}
         ${renderHeroPanels(state, meId, isDealer)}
         <h3>Log</h3>
-        <div class="log">${state.log.map((l) => `<div>${escapeHtml(l)}</div>`).join('')}</div>
+        <div class="log">${state.log.map((l) => `<div>${formatCombatLogLine(l)}</div>`).join('')}</div>
       </section>
     </div>
-  `;
-}
-
-function clashPlayOptionsFor(hero, clash) {
-  const opts = {};
-  if (hero?.perk?.id === 'big-swing' && !hero.perkUsedThisClash) opts.bigSwing = true;
-  if (hero?.perk?.id === 'improvised-zap' && !hero.perkUsedThisClash) opts.defensiveSparkAsAny = true;
-  if (hero?.offhand?.id === 'G-17' && !hero.offhand.tapped) opts.forceParry = true;
-  return opts;
-}
-
-function renderClashPanel(state, isDealer, meId) {
-  const clash = state.clash;
-  const hero = state.heroes[clash.heroPlayerId];
-  const isMyClash = meId === clash.heroPlayerId;
-  const canPlay = clash.whoseTurn === 'hero' && (isMyClash || isDealer);
-  const canMonster = isDealer && clash.whoseTurn === 'monster';
-  const activeColor = SUIT_META[clash.activeSuit]?.color || '#888';
-  const fighterHand = hero?.hand || [];
-  const showHand = isMyClash || isDealer;
-  const playOpts = clashPlayOptionsFor(hero, clash);
-  const fighters = (clash.fighters || [clash.heroPlayerId])
-    .map((pid) => state.heroes[pid]?.name || pid)
-    .join(', ');
-  const confettiIdx = (hero?.belt || []).findIndex((b) => b.id === 'G-29');
-  const hasCookie = hero?.offhand?.id === 'G-17' && !hero.offhand.tapped;
-
-  return `
-    <div class="panel clash-panel" data-coach="clash" style="box-shadow:none;border-color:rgba(217,72,59,0.45)">
-      <div class="row" style="justify-content:space-between;align-items:flex-start">
-        <div>
-          <h3>${clash.isBoss ? 'Boss Clash' : 'Clash & Chain'}</h3>
-          <p class="muted" style="margin:0">${escapeHtml(clash.note || '')}</p>
-          ${
-            clash.isBoss
-              ? `<p class="muted" style="margin:0.25rem 0 0">Fighters: ${escapeHtml(fighters)} · Boss acts every ${clash.bossEvery || 1} hero turn(s)</p>`
-              : ''
-          }
-        </div>
-        <div class="pill" style="border-color:${activeColor}">
-          Active: <strong style="color:${activeColor}">${escapeHtml(clash.activeSuit || '—')} ${clash.activeRank ?? ''}</strong>
-          · Turn: <strong>${clash.whoseTurn === 'hero' ? escapeHtml(hero?.name || 'Hero') : escapeHtml(clash.monsterName)}</strong>
-        </div>
-      </div>
-      <div class="vcard-row" style="margin:0.65rem 0;align-items:stretch">
-        ${renderMonsterCard(clash.monsterId, {
-          size: 'table',
-          hp: clash.monsterHp,
-          maxHp: clash.monsterMaxHp,
-          isBoss: clash.isBoss,
-        })}
-        <div class="stack" style="min-width:120px">
-          <div class="muted">Clash pile</div>
-          ${
-            clash.topCard
-              ? renderActionCard(clash.topCard, { size: 'hand' })
-              : '<span class="muted">Empty</span>'
-          }
-          <div class="pill">HP ${clash.monsterHp}/${clash.monsterMaxHp}</div>
-          ${clash.trait ? `<p class="muted" style="max-width:14rem;font-size:0.8rem">${escapeHtml(clash.trait)}</p>` : ''}
-        </div>
-        ${renderHeroCard(hero?.heroId, { size: 'hand', downed: hero?.downed })}
-      </div>
-      ${
-        showHand
-          ? `<div>
-              <h3>Combat hand ${clash.needsDraw && canPlay ? '<span class="muted">(will draw 1 on play)</span>' : ''}</h3>
-              ${
-                hero?.perk && !hero.perkUsedThisClash
-                  ? `<p class="muted" style="margin:0 0 0.35rem">Perk ready: ${escapeHtml(hero.perk.name)} — ${escapeHtml(hero.perk.text)}</p>`
-                  : ''
-              }
-              <div class="vcard-row hand">
-                ${fighterHand
-                  .map((c) => {
-                    const legal =
-                      canPlay &&
-                      (isLegalPlay(c, clash) ||
-                        isLegalPlay(c, clash, { bigSwing: playOpts.bigSwing && c.suit === 'brawn' }) ||
-                        isLegalPlay(c, clash, {
-                          defensiveSparkAsAny: playOpts.defensiveSparkAsAny && c.suit === 'spark',
-                        }) ||
-                        (hasCookie && isLegalPlay(c, clash, { forceParry: true })));
-                    const cramp = isCramp(c);
-                    return `<button type="button" class="clash-card-btn ${legal ? 'legal' : ''} ${cramp ? 'is-cramp' : ''}"
-                      data-clash-card="${escapeAttr(c.id)}"
-                      ${legal ? '' : 'disabled'}
-                      title="${legal ? 'Play onto Clash Pile' : cramp ? 'Cramp! — use Stretch instead' : 'Illegal vs active Suit/Rank'}">
-                      ${renderActionCard(c, { size: 'hand' })}
-                    </button>`;
-                  })
-                  .join('') || '<span class="muted">Empty hand</span>'}
-              </div>
-            </div>`
-          : `<p class="muted">${escapeHtml(hero?.name || 'Hero')}'s hand is private.</p>`
-      }
-      <div class="row" style="margin-top:0.6rem;flex-wrap:wrap">
-        ${
-          canPlay
-            ? `
-          <button type="button" id="btn-clash-desperation">Flip Desperation</button>
-          <button type="button" id="btn-clash-cramp" ${fighterHand.some((c) => isCramp(c)) ? '' : 'disabled'}>Stretch (discard ≤2 Cramp!)</button>
-          ${
-            hasCookie
-              ? `<label class="muted" style="display:inline-flex;gap:0.35rem;align-items:center">
-                  <input type="checkbox" id="chk-cookie-parry" /> Tap Cookie-Tin as Parry
-                </label>`
-              : ''
-          }
-          ${
-            confettiIdx >= 0
-              ? `<button type="button" data-clash-belt="${confettiIdx}" data-belt-mode="daze">Confetti Bomb — Daze</button>
-                 <button type="button" data-clash-belt="${confettiIdx}" data-belt-mode="flee">Confetti Bomb — Flee</button>`
-              : ''
-          }
-          ${!heroHasLegalPlay(hero, clash, playOpts) && !(hasCookie && fighterHand.some((c) => !isCramp(c))) ? '<span class="muted">No legal plays — Desperation recommended.</span>' : ''}
-        `
-            : ''
-        }
-        ${
-          canMonster
-            ? `<button class="primary" type="button" id="btn-clash-monster">Resolve monster turn</button>
-               <span class="muted">Monster hand: ${clash.monsterHand?.length ?? 0} cards</span>`
-            : ''
-        }
-        ${
-          isDealer
-            ? `<button type="button" id="btn-clash-win">Force POOF!</button>
-               <button type="button" id="btn-clash-flee">Force flee</button>`
-            : ''
-        }
-        ${
-          !canPlay && !canMonster && clash.whoseTurn === 'monster'
-            ? `<p class="muted" data-coach="clash-wait">Waiting for dealer to resolve the monster turn…</p>`
-            : ''
-        }
-        ${
-          !canPlay && clash.whoseTurn === 'hero' && !isMyClash
-            ? `<p class="muted" data-coach="clash-wait">Waiting for ${escapeHtml(hero?.name || 'hero')} to play…</p>`
-            : ''
-        }
-      </div>
-    </div>
+    ${
+      state.phase === 'clash' && state.clash
+        ? renderClashModal(state, isDealer, meId, clashFx)
+        : ''
+    }
   `;
 }
 
@@ -936,52 +800,8 @@ function wireTable() {
       room.dispatch({ type: 'end-turn' });
     }
   });
-  document.getElementById('btn-clash-win')?.addEventListener('click', () => {
-    room.dispatch({ type: 'resolve-clash-stub', result: 'win' });
-  });
-  document.getElementById('btn-clash-flee')?.addEventListener('click', () => {
-    room.dispatch({ type: 'resolve-clash-stub', result: 'flee' });
-  });
-  document.getElementById('btn-clash-monster')?.addEventListener('click', () => {
-    room.dispatch({ type: 'clash-monster-turn' });
-  });
-  document.getElementById('btn-clash-desperation')?.addEventListener('click', () => {
-    room.dispatch({ type: 'clash-desperation' });
-  });
-  document.getElementById('btn-clash-cramp')?.addEventListener('click', () => {
-    room.dispatch({ type: 'clash-clear-cramp' });
-  });
-  document.querySelectorAll('[data-clash-card]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const cardId = btn.getAttribute('data-clash-card');
-      const clash = session.state.clash;
-      const action = { type: 'clash-play', cardId };
-      const hero = clash && session.state.heroes[clash.heroPlayerId];
-      const card = hero?.hand?.find((c) => c.id === cardId);
-      if (card?.type === 'wild' || card?.kind === 'wild') {
-        action.wildSuit = hero?.preferredSuit || 'brawn';
-      }
-      if (document.getElementById('chk-cookie-parry')?.checked) {
-        action.forceParry = true;
-      }
-      if (hero?.perk?.id === 'big-swing' && !hero.perkUsedThisClash && card?.suit === 'brawn') {
-        action.useBigSwing = true;
-      }
-      if (hero?.perk?.id === 'improvised-zap' && !hero.perkUsedThisClash && card?.suit === 'spark') {
-        action.useZap = true;
-      }
-      room.dispatch(action);
-    });
-  });
-  document.querySelectorAll('[data-clash-belt]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      room.dispatch({
-        type: 'clash-use-belt',
-        beltIndex: Number(btn.getAttribute('data-clash-belt')),
-        mode: btn.getAttribute('data-belt-mode') || 'daze',
-      });
-    });
-  });
+  wireClashModal(room, session);
+  wireTableLogHovers();
   document.getElementById('btn-dealer-log')?.addEventListener('click', () => {
     const message = document.getElementById('dealer-note')?.value?.trim();
     if (message) room.dispatch({ type: 'dealer-log', message });

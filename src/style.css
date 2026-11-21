@@ -428,3 +428,490 @@ select {
 .panel:nth-child(2) {
   animation-delay: 0.05s;
 }
+
+/* —— Clash modal table —— */
+.game-layout.clash-dimmed {
+  filter: saturate(0.85) brightness(0.72);
+  pointer-events: none;
+  user-select: none;
+}
+
+.clash-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 40%, rgba(80, 42, 28, 0.55), transparent 70%),
+    rgba(12, 9, 6, 0.72);
+  animation: clash-backdrop-in 0.35s ease both;
+}
+
+.clash-modal {
+  width: min(1080px, 100%);
+  max-height: min(92vh, 920px);
+  overflow: auto;
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: 1fr;
+  padding: 1rem 1.1rem 1.15rem;
+  border-radius: 18px;
+  border: 1px solid rgba(243, 230, 208, 0.22);
+  background:
+    linear-gradient(165deg, rgba(58, 42, 30, 0.97), rgba(28, 22, 16, 0.98)),
+    radial-gradient(ellipse at 20% 0%, rgba(196, 120, 58, 0.18), transparent 50%);
+  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.55);
+  animation: clash-modal-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (min-width: 900px) {
+  .clash-modal {
+    grid-template-columns: 1.55fr 0.85fr;
+    align-items: stretch;
+  }
+
+  .clash-combat-log {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+  }
+
+  .clash-modal-header,
+  .clash-table {
+    grid-column: 1;
+  }
+}
+
+.clash-modal-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.clash-kicker {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #d99b66;
+}
+
+.clash-modal-header h2 {
+  margin: 0.15rem 0 0.25rem;
+  font-size: clamp(1.35rem, 3vw, 1.85rem);
+}
+
+.clash-note {
+  margin: 0;
+  max-width: 36rem;
+}
+
+.clash-active-pill {
+  display: grid;
+  gap: 0.2rem;
+  justify-items: end;
+  padding: 0.55rem 0.8rem;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--active, var(--accent)) 55%, transparent);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.clash-active-pill strong {
+  color: var(--active, var(--ink));
+  font-size: 1.05rem;
+}
+
+.clash-turn-chip {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.clash-table {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.85rem;
+  border-radius: 14px;
+  border: 1px solid rgba(243, 230, 208, 0.12);
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 45%, rgba(90, 58, 36, 0.45), transparent 70%),
+    linear-gradient(180deg, rgba(52, 38, 26, 0.9), rgba(24, 18, 12, 0.95));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.clash-zone {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.clash-zone-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.clash-zone-monster {
+  justify-items: center;
+  text-align: center;
+}
+
+.clash-monster-hand {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 78px;
+  padding: 0.25rem 1.5rem 0.35rem;
+}
+
+.clash-monster-hand.empty {
+  min-height: auto;
+  padding: 0.2rem;
+}
+
+.clash-back-fan {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 72px;
+}
+
+.clash-back-slot {
+  margin-left: -42px;
+  transform: translateX(var(--fan, 0));
+  transition: transform 0.25s ease;
+}
+
+.clash-back-slot:first-child {
+  margin-left: 0;
+}
+
+.clash-back-slot .vcard {
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.4);
+}
+
+.clash-hand-count {
+  position: absolute;
+  right: 0;
+  top: 0;
+  min-width: 1.7rem;
+  height: 1.7rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #c4783a, #8a4e22);
+  color: #1a120a;
+  font-weight: 800;
+  font-size: 0.85rem;
+  border: 1px solid rgba(255, 230, 190, 0.35);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+}
+
+.clash-monster-row,
+.clash-hero-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.clash-trait {
+  margin: 0;
+  max-width: 28rem;
+  font-size: 0.8rem;
+}
+
+.clash-zone-mid {
+  justify-items: center;
+  padding: 0.35rem 0 0.15rem;
+  border-top: 1px dashed rgba(243, 230, 208, 0.14);
+  border-bottom: 1px dashed rgba(243, 230, 208, 0.14);
+}
+
+.clash-mid-stage {
+  display: grid;
+  justify-items: center;
+  gap: 0.55rem;
+}
+
+.clash-mid-stage.stage-pulse {
+  animation: clash-stage-pulse 0.55s ease;
+}
+
+.clash-pile {
+  position: relative;
+  width: 130px;
+  height: 176px;
+}
+
+.clash-pile-under,
+.clash-pile-top {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.clash-pile-under {
+  transform: translate(-10px, 8px) rotate(-6deg);
+  opacity: 0.72;
+  filter: brightness(0.9);
+}
+
+.clash-pile-top {
+  z-index: 2;
+}
+
+.clash-pile.pile-arrive .clash-pile-top {
+  animation: clash-card-to-pile 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.clash-pile-empty {
+  width: 118px;
+  height: 164px;
+  border-radius: 10px;
+  border: 1px dashed rgba(243, 230, 208, 0.28);
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.18);
+  font-size: 0.82rem;
+}
+
+.clash-mid-meta {
+  display: grid;
+  gap: 0.25rem;
+  justify-items: center;
+  text-align: center;
+}
+
+.clash-actions {
+  justify-content: center;
+  margin-top: 0.25rem;
+}
+
+.clash-zone-hero {
+  justify-items: center;
+}
+
+.clash-player-hand {
+  justify-content: center;
+  max-width: 100%;
+}
+
+.clash-player-hand .clash-card-btn.legal {
+  animation: clash-legal-breathe 2.4s ease-in-out infinite;
+}
+
+.clash-hp {
+  position: relative;
+  min-width: 160px;
+  padding: 0.45rem 0.6rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+
+.clash-hp-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  margin-bottom: 0.3rem;
+}
+
+.clash-hp-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.clash-hp-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6f9e7a, #9bc7a4);
+  transition: width 0.35s ease;
+}
+
+.clash-hp.monster .clash-hp-fill {
+  background: linear-gradient(90deg, #c45c4a, #d99b66);
+}
+
+.clash-hp.hp-flash-hurt {
+  animation: clash-hp-hurt 0.55s ease;
+}
+
+.clash-hp.hp-flash-heal {
+  animation: clash-hp-heal 0.55s ease;
+}
+
+.hp-float {
+  position: absolute;
+  right: 0.55rem;
+  top: 0.15rem;
+  font-weight: 800;
+  font-size: 0.95rem;
+  animation: clash-hp-float 0.85s ease both;
+  pointer-events: none;
+}
+
+.hp-delta-down {
+  color: #ffb4a8;
+}
+
+.hp-delta-up {
+  color: #9bc7a4;
+}
+
+.clash-combat-log {
+  display: grid;
+  gap: 0.45rem;
+  align-content: start;
+  padding: 0.75rem 0.8rem;
+  border-radius: 12px;
+  border: 1px solid rgba(243, 230, 208, 0.12);
+  background: rgba(0, 0, 0, 0.28);
+  min-height: 180px;
+}
+
+.clash-combat-log h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.clash-log {
+  max-height: min(52vh, 420px);
+}
+
+.clash-log-line {
+  line-height: 1.4;
+}
+
+.clash-modal-backdrop.clash-screen-hit {
+  animation: clash-screen-hit 0.4s ease;
+}
+
+@keyframes clash-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes clash-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes clash-card-to-pile {
+  from {
+    opacity: 0.35;
+    transform: translateY(42px) scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes clash-stage-pulse {
+  0% {
+    filter: brightness(1);
+  }
+  40% {
+    filter: brightness(1.18);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}
+
+@keyframes clash-hp-hurt {
+  0%,
+  100% {
+    box-shadow: none;
+    background: rgba(0, 0, 0, 0.28);
+  }
+  35% {
+    box-shadow: 0 0 0 2px rgba(196, 92, 74, 0.65);
+    background: rgba(120, 40, 32, 0.45);
+  }
+}
+
+@keyframes clash-hp-heal {
+  0%,
+  100% {
+    box-shadow: none;
+  }
+  40% {
+    box-shadow: 0 0 0 2px rgba(111, 158, 122, 0.65);
+  }
+}
+
+@keyframes clash-hp-float {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+}
+
+@keyframes clash-legal-breathe {
+  0%,
+  100% {
+    transform: translateY(-2px);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes clash-screen-hit {
+  0%,
+  100% {
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 40%, rgba(80, 42, 28, 0.55), transparent 70%),
+      rgba(12, 9, 6, 0.72);
+  }
+  40% {
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 40%, rgba(140, 48, 36, 0.7), transparent 70%),
+      rgba(28, 8, 6, 0.78);
+  }
+}
+
+@media (max-width: 640px) {
+  .clash-modal {
+    padding: 0.75rem;
+    max-height: 96vh;
+  }
+
+  .clash-pile {
+    width: 110px;
+    height: 154px;
+  }
+
+  .clash-player-hand .vcard.size-hand {
+    width: 96px;
+    height: 134px;
+  }
+}
