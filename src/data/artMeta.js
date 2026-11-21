@@ -42,10 +42,17 @@ export const SUIT_META = {
   },
 };
 
+/** Prefer optimized WebP; accept .png filenames from the print compositor. */
+function webPath(folder, file) {
+  const name = String(file || '').replace(/\.(png|webp|jpe?g)$/i, '');
+  return `./assets/${folder}/${name}.webp`;
+}
+
 export const ASSET = {
-  frames: (file) => `./assets/frames/${file}`,
-  art: (file) => `./assets/art/${file}`,
-  icons: (file) => `./assets/icons/${file}`,
+  frames: (file) => webPath('frames', file),
+  art: (file) => webPath('art', file),
+  icons: (file) => webPath('icons', file),
+  ui: (file) => `./assets/ui/${file}`,
 };
 
 export const HERO_ART = {

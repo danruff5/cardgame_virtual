@@ -11,6 +11,18 @@ import {
   appendLog,
   publicStateFor,
 } from './state.js';
+import {
+  isLegalPlay,
+  isCramp,
+  isWild,
+  isSpecial,
+  classifyPlay,
+  applyLeadCard,
+  afterPlayUpdateActive,
+  heroHasLegalPlay,
+  pickMonsterPlay,
+  weaponStrike,
+} from './clash.js';
 
 /**
  * Dealer-authoritative reducer. Returns { ok, error?, state }.
@@ -210,33 +222,130 @@ export function applyAction(state, action, actorId) {
         break;
       }
 
+      case 'clash-play': {
+        if (next.phase !== 'clash' || !next.clash) return fail(next, 'No active clash');
+        const clash = next.clash;
+        if (clash.whoseTurn !== 'hero') return fail(next, 'Not hero combat turn');
+        const heroPid = clash.heroPlayerId;
+        if (actor.role !== 'dealer' && actorId !== heroPid) return fail(next, 'Not your clash');
+        const hero = next.heroes[heroPid];
+        if (clash.heroDazed) {
+          clash.heroDazed = false;
+          appendLog(next, `${hero.name} is Dazed and misses this turn!`);
+          clash.whoseTurn = 'monster';
+          clash.needsDraw = false;
+          break;
+        }
+        // Mandatory turn draw once
+        if (clash.needsDraw) {
+          drawAction(next, hero);
+          clash.needsDraw = false;
+        }
+        const card = hero.hand.find((c) => c.id === action.cardId);
+        if (!card) return fail(next, 'Card not in hand');
+        if (isCramp(card)) return fail(next, 'Cannot play Cramp! onto Clash Pile');
+        if (!isLegalPlay(card, clash)) return fail(next, 'Illegal play (need matching Suit or Rank)');
+
+        hero.hand = hero.hand.filter((c) => c.id !== card.id);
+        const outcome = resolveHeroCardPlay(next, hero, card, action.wildSuit);
+        if (outcome === 'again') {
+          // Daze! — hero plays again
+          clash.needsDraw = false;
+          clash.whoseTurn = 'hero';
+        } else {
+          clash.whoseTurn = 'monster';
+          clash.needsDraw = false;
+        }
+        if (clash.monsterHp <= 0) {
+          endClashVictory(next);
+        }
+        break;
+      }
+
+      case 'clash-clear-cramp': {
+        if (next.phase !== 'clash' || !next.clash) return fail(next, 'No active clash');
+        const clash = next.clash;
+        if (clash.whoseTurn !== 'hero') return fail(next, 'Not hero combat turn');
+        const hero = next.heroes[clash.heroPlayerId];
+        if (actor.role !== 'dealer' && actorId !== clash.heroPlayerId) return fail(next, 'Not your clash');
+        if (clash.needsDraw) {
+          drawAction(next, hero);
+          clash.needsDraw = false;
+        }
+        const cramps = hero.hand.filter((c) => isCramp(c)).slice(0, 2);
+        if (!cramps.length) return fail(next, 'No Cramp! cards to stretch');
+        const ids = new Set(cramps.map((c) => c.id));
+        hero.hand = hero.hand.filter((c) => !ids.has(c.id));
+        appendLog(next, `${hero.name} stretches — discards ${cramps.length} Cramp!`);
+        clash.whoseTurn = 'monster';
+        break;
+      }
+
+      case 'clash-desperation': {
+        if (next.phase !== 'clash' || !next.clash) return fail(next, 'No active clash');
+        const clash = next.clash;
+        if (clash.whoseTurn !== 'hero') return fail(next, 'Not hero combat turn');
+        const hero = next.heroes[clash.heroPlayerId];
+        if (actor.role !== 'dealer' && actorId !== clash.heroPlayerId) return fail(next, 'Not your clash');
+        if (clash.needsDraw) {
+          drawAction(next, hero);
+          clash.needsDraw = false;
+        }
+        // Allow desperation even with legal cards (hoarding) — per rules
+        resolveDesperation(next, hero);
+        clash.whoseTurn = 'monster';
+        if (clash.monsterHp <= 0) endClashVictory(next);
+        if (hero.hp <= 0) knockDownHero(next, hero);
+        break;
+      }
+
+      case 'clash-monster-turn': {
+        if (actor.role !== 'dealer') return fail(next, 'Dealer only');
+        if (next.phase !== 'clash' || !next.clash) return fail(next, 'No active clash');
+        const clash = next.clash;
+        if (clash.whoseTurn !== 'monster') return fail(next, 'Not monster turn');
+        const hero = next.heroes[clash.heroPlayerId];
+        if (clash.monsterDazed) {
+          clash.monsterDazed = false;
+          appendLog(next, `${clash.monsterName} is Dazed and misses!`);
+          clash.whoseTurn = 'hero';
+          clash.needsDraw = true;
+          break;
+        }
+        // Monster draws 1
+        if (next.decks.action.length) {
+          clash.monsterHand.push(next.decks.action.shift());
+        }
+        const pick = pickMonsterPlay(clash.monsterHand, clash);
+        if (!pick) {
+          appendLog(next, `${clash.monsterName} Fumbles! (no legal play) — draws to recover.`);
+          if (next.decks.action.length) clash.monsterHand.push(next.decks.action.shift());
+        } else {
+          clash.monsterHand = clash.monsterHand.filter((c) => c.id !== pick.id);
+          resolveMonsterCardPlay(next, hero, pick);
+        }
+        if (hero.hp <= 0) {
+          knockDownHero(next, hero);
+        } else if (clash.monsterHp <= 0) {
+          endClashVictory(next);
+        } else {
+          clash.whoseTurn = 'hero';
+          clash.needsDraw = true;
+        }
+        break;
+      }
+
       case 'resolve-clash-stub': {
-        // Minimal: dealer marks monster poof / flee for architecture demo
+        // Dealer override (win/flee) still available
         if (actor.role !== 'dealer') return fail(next, 'Dealer only');
         if (next.phase !== 'clash' || !next.clash) return fail(next, 'No active clash');
         const hero = next.heroes[next.clash.heroPlayerId];
-        const tile = next.map.tiles.find((t) => t.key === next.clash.roomKey);
-        const wasBoss = Boolean(next.clash.isBoss || tile?.kind === 'boss');
         if (action.result === 'win') {
-          appendLog(next, `${next.clash.monsterName} goes POOF! ${hero.name} wins the clash.`);
-          if (tile) {
-            tile.cleared = true;
-          }
-          // Clear cramps from hand
-          hero.hand = hero.hand.filter((c) => c.type !== 'cramp');
-          next.clash = null;
-          next.phase = 'exploring';
-          if (wasBoss) {
-            unlockStairs(next, 'Floor Boss defeated — Shiny Basement Key found!');
-          }
-          next.explorationActionsLeft = 0;
-          endHeroExplorationTurn(next);
+          appendLog(next, `Dealer resolves: ${next.clash.monsterName} goes POOF!`);
+          endClashVictory(next);
         } else if (action.result === 'flee') {
-          appendLog(next, `${hero.name} slips away from ${next.clash.monsterName} (stub flee).`);
-          next.clash = null;
-          next.phase = 'exploring';
-          next.explorationActionsLeft = 0;
-          endHeroExplorationTurn(next);
+          appendLog(next, `${hero.name} slips away from ${next.clash.monsterName} (flee).`);
+          cleanupClash(next, { victory: false });
         } else {
           return fail(next, 'Unknown clash result');
         }
@@ -307,6 +416,7 @@ function startClashStub(state, heroPlayerId, tile) {
   let cunning = 3;
   let baseDmg = 1;
   let monsterId = null;
+  let trait = '';
 
   if (tile.kind === 'boss') {
     const boss = BOSSES.find((b) => b.id === state.bossId) || BOSSES[0];
@@ -316,6 +426,7 @@ function startClashStub(state, heroPlayerId, tile) {
     cunning = boss.cunning;
     baseDmg = boss.baseDmg;
     monsterId = boss.id;
+    trait = boss.trait;
   } else if (state.decks.monsters.length) {
     const m = state.decks.monsters.shift();
     monsterName = m.name;
@@ -323,9 +434,11 @@ function startClashStub(state, heroPlayerId, tile) {
     cunning = m.cunning;
     baseDmg = m.baseDmg;
     monsterId = m.id;
+    trait = m.trait;
   }
 
   const hero = state.heroes[heroPlayerId];
+  hero.perkUsedThisClash = false;
   // Top up hand to 4
   while (hero.hand.filter((c) => c.type !== 'cramp').length < 4 && state.decks.action.length) {
     hero.hand.push(state.decks.action.shift());
@@ -345,15 +458,280 @@ function startClashStub(state, heroPlayerId, tile) {
     monsterMaxHp: monsterHp,
     baseDmg,
     cunning,
+    trait,
     monsterHand,
     isBoss: tile.kind === 'boss',
     activeSuit: null,
     activeRank: null,
-    note: tile.kind === 'boss'
-      ? 'Boss clash stub — Resolve Win unlocks the Stairway Down (Shiny Basement Key).'
-      : 'Clash stub — full card matching UI comes later. Dealer can Resolve Win / Flee.',
+    pile: [],
+    topCard: null,
+    whoseTurn: 'hero',
+    needsDraw: false,
+    heroDazed: false,
+    monsterDazed: false,
+    ignoredFirstHit: false,
+    note: 'Monster leads — then play matching Suit or Rank (or Wild / Desperation).',
   };
-  appendLog(state, `Clash! ${hero.name} vs ${monsterName} (${monsterHp} HP, Cunning ${cunning}).`);
+
+  // Monster leads (telegraph)
+  if (monsterHand.length) {
+    const lead = monsterHand.shift();
+    state.clash.monsterHand = monsterHand;
+    applyLeadCard(state.clash, lead);
+    appendLog(
+      state,
+      `Clash! ${hero.name} vs ${monsterName} (${monsterHp} HP). ${monsterName} leads ${cardLabel(lead)}.`,
+    );
+  } else {
+    appendLog(state, `Clash! ${hero.name} vs ${monsterName} (${monsterHp} HP).`);
+  }
+  state.clash.whoseTurn = 'hero';
+  state.clash.needsDraw = true;
+}
+
+function drawAction(state, hero) {
+  reshuffleActionIfNeeded(state);
+  if (state.decks.action.length) {
+    const c = state.decks.action.shift();
+    hero.hand.push(c);
+    return c;
+  }
+  return null;
+}
+
+function reshuffleActionIfNeeded(state) {
+  if (state.decks.action.length) return;
+  if (!state.decks.actionDiscard?.length) return;
+  state.decks.action = state.decks.actionDiscard.splice(0);
+  // simple shuffle
+  for (let i = state.decks.action.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [state.decks.action[i], state.decks.action[j]] = [state.decks.action[j], state.decks.action[i]];
+  }
+  appendLog(state, 'Action Deck reshuffled from discard.');
+}
+
+function cardLabel(card) {
+  if (!card) return '?';
+  if (isWild(card)) return 'Heroic Wild!';
+  if (isSpecial(card)) return `${card.name} (${card.suit})`;
+  if (isCramp(card)) return 'Cramp!';
+  return `${card.suit} ${card.rank}`;
+}
+
+function resolveHeroCardPlay(state, hero, card, wildSuit) {
+  const clash = state.clash;
+  let again = false;
+
+  if (isSpecial(card)) {
+    afterPlayUpdateActive(clash, card);
+    if (card.kind === 'daze') {
+      clash.monsterDazed = true;
+      appendLog(state, `${hero.name} plays Daze! — ${clash.monsterName} will miss next turn. ${hero.name} plays again!`);
+      again = true;
+    } else if (card.kind === 'bounce') {
+      clash.monsterHp = Math.max(0, clash.monsterHp - 1);
+      appendLog(state, `${hero.name} Bounce Back! — reflects 1 Dmg (${clash.monsterName} at ${clash.monsterHp} HP).`);
+    } else if (card.kind === 'tuckered') {
+      clash.monsterHp = Math.max(0, clash.monsterHp - 2);
+      appendLog(state, `${hero.name} Tuckered Out! (+2) — ${clash.monsterName} takes 2 direct Dmg (${clash.monsterHp} HP).`);
+    }
+  } else {
+    const kind = classifyPlay(card, clash);
+    afterPlayUpdateActive(clash, card, wildSuit);
+    if (isWild(card) || kind === 'clean') {
+      let dmg = weaponStrike(hero);
+      if (hero.weapon?.strikeBonusSuit && card.suit === hero.weapon.strikeBonusSuit) dmg += 1;
+      if (isWild(card)) {
+        clash.activeSuit = wildSuit || hero.preferredSuit || 'brawn';
+        appendLog(state, `${hero.name} Heroic Wild! — Strike ${dmg}. New suit: ${clash.activeSuit}.`);
+      } else {
+        appendLog(state, `${hero.name} Clean Strike with ${cardLabel(card)} — ${dmg} Dmg!`);
+      }
+      clash.monsterHp = Math.max(0, clash.monsterHp - dmg);
+    } else if (kind === 'parry') {
+      appendLog(state, `${hero.name} PARRIES with ${cardLabel(card)}! Suit → ${card.suit}.`);
+      if (hero.perk?.id === 'excuse-me-no' && !hero.perkUsedThisClash) {
+        hero.hp = Math.min(hero.maxHp, hero.hp + 1);
+        hero.perkUsedThisClash = true;
+        appendLog(state, `${hero.name} perk Excuse Me, No — heal 1 HP (${hero.hp}).`);
+      }
+    } else {
+      clash.monsterHp = Math.max(0, clash.monsterHp - 1);
+      appendLog(state, `${hero.name} Guards with ${cardLabel(card)} — 1 chip Dmg (${clash.monsterName} at ${clash.monsterHp}).`);
+    }
+  }
+
+  discardToAction(state, card);
+  return again ? 'again' : 'done';
+}
+
+function resolveMonsterCardPlay(state, hero, card) {
+  const clash = state.clash;
+  if (isSpecial(card)) {
+    afterPlayUpdateActive(clash, card);
+    if (card.kind === 'daze') {
+      clash.heroDazed = true;
+      appendLog(state, `${clash.monsterName} plays Daze! — ${hero.name} will miss next turn.`);
+    } else if (card.kind === 'bounce') {
+      hurtHero(state, hero, 1, card);
+      appendLog(state, `${clash.monsterName} Bounce Back!`);
+    } else if (card.kind === 'tuckered') {
+      addCramp(state, hero, 2);
+      appendLog(state, `${clash.monsterName} Tuckered Out! — ${hero.name} gains 2 Cramp!`);
+    }
+  } else {
+    const kind = classifyPlay(card, clash);
+    afterPlayUpdateActive(clash, card);
+    if (isWild(card) || kind === 'clean') {
+      hurtHero(state, hero, clash.baseDmg, card);
+      appendLog(state, `${clash.monsterName} hits with ${cardLabel(card)} for ${clash.baseDmg}! (${hero.name} ${hero.hp} HP)`);
+    } else if (kind === 'parry') {
+      appendLog(state, `${clash.monsterName} Parries with ${cardLabel(card)}.`);
+    } else {
+      hurtHero(state, hero, 1, card);
+      appendLog(state, `${clash.monsterName} glancing hit (1). ${hero.name} at ${hero.hp} HP.`);
+    }
+  }
+  discardToAction(state, card);
+}
+
+function hurtHero(state, hero, amount, card) {
+  let dmg = amount;
+  const rank = card?.rank != null ? Number(card.rank) : null;
+  if (rank != null && hero.armor?.ignoreRanks?.includes(rank)) {
+    appendLog(state, `${hero.name}'s armor ignores Rank ${rank} damage!`);
+    return;
+  }
+  if (hero.offhand?.tapBlock && !hero.offhand.tapped) {
+    // Auto-tap optional: only if dealer/hero would tap — MVP auto-blocks 1 once
+    const block = Math.min(dmg, hero.offhand.tapBlock || 1);
+    dmg -= block;
+    hero.offhand.tapped = true;
+    appendLog(state, `${hero.name} taps ${hero.offhand.name} — blocks ${block}.`);
+  }
+  hero.hp = Math.max(0, hero.hp - Math.max(0, dmg));
+}
+
+function addCramp(state, hero, n) {
+  for (let i = 0; i < n; i += 1) {
+    if (state.decks.cramp.length) {
+      hero.hand.push(state.decks.cramp.shift());
+    } else {
+      hero.hand.push({
+        id: `C-temp-${Math.random().toString(36).slice(2, 6)}`,
+        type: 'cramp',
+        name: 'Cramp!',
+      });
+    }
+  }
+}
+
+function resolveDesperation(state, hero) {
+  const clash = state.clash;
+  if (!state.decks.desperation.length) {
+    appendLog(state, 'Desperation deck empty!');
+    return;
+  }
+  const card = state.decks.desperation.shift();
+  clash.lastDesperation = card;
+  appendLog(state, `${hero.name} flips Desperation: ${card.title}!`);
+  // Simplified outcomes by tier
+  if (card.tier === 'messy') {
+    if (/Banana/i.test(card.title)) {
+      clash.monsterHp = Math.max(0, clash.monsterHp - 1);
+      hero.hp = Math.max(0, hero.hp - 1);
+    } else if (/Dropped/i.test(card.title)) {
+      hero.hp = Math.max(0, hero.hp - 2);
+    } else if (/Sneeze/i.test(card.title)) {
+      addCramp(state, hero, 1);
+      for (let i = 0; i < 2 && state.decks.action.length; i += 1) {
+        clash.monsterHand.push(state.decks.action.shift());
+      }
+    } else if (/Shoelaces/i.test(card.title)) {
+      addCramp(state, hero, 1);
+      if (hero.hand.length) {
+        const i = Math.floor(Math.random() * hero.hand.length);
+        discardToAction(state, hero.hand.splice(i, 1)[0]);
+      }
+    } else if (/Backfire/i.test(card.title)) {
+      hero.hp = Math.max(0, hero.hp - 2);
+      clash.monsterHp = Math.min(clash.monsterMaxHp, clash.monsterHp + 1);
+      clash.activeSuit = 'spark';
+      clash.activeRank = 3;
+    } else {
+      hero.hp = Math.max(0, hero.hp - 1);
+    }
+    clash.activeRank = 1;
+  } else if (card.tier === 'neutral') {
+    if (/Elbow/i.test(card.title)) {
+      clash.monsterHp = Math.max(0, clash.monsterHp - 1);
+    } else if (/Snack/i.test(card.title)) {
+      hero.hp = Math.min(hero.maxHp, hero.hp + 1);
+      drawAction(state, hero);
+    }
+    clash.activeRank = /Duck/i.test(card.title) ? 2 : 1;
+  } else {
+    // miracle
+    if (/Mega-Crit/i.test(card.title)) {
+      const dmg = weaponStrike(hero) + 2;
+      clash.monsterHp = Math.max(0, clash.monsterHp - dmg);
+      appendLog(state, `Accidental Mega-Crit for ${dmg}!`);
+    } else {
+      clash.monsterHp = Math.max(0, clash.monsterHp - 1);
+    }
+    clash.activeRank = 1;
+  }
+  appendLog(state, `Desperation resolved — ${clash.monsterName} ${clash.monsterHp} HP, ${hero.name} ${hero.hp} HP.`);
+}
+
+function discardToAction(state, card) {
+  if (!card || isCramp(card)) return;
+  state.decks.actionDiscard = state.decks.actionDiscard || [];
+  state.decks.actionDiscard.push(card);
+}
+
+function knockDownHero(state, hero) {
+  hero.hp = 0;
+  hero.downed = true;
+  // Discard entire hand
+  for (const c of hero.hand) discardToAction(state, c);
+  hero.hand = [];
+  appendLog(state, `${hero.name} is DOWNED! Hand discarded.`);
+  cleanupClash(state, { victory: false, downed: true });
+}
+
+function endClashVictory(state) {
+  const clash = state.clash;
+  const hero = state.heroes[clash.heroPlayerId];
+  appendLog(state, `${clash.monsterName} goes POOF! ${hero.name} wins the clash.`);
+  cleanupClash(state, { victory: true, wasBoss: clash.isBoss });
+}
+
+function cleanupClash(state, { victory, wasBoss, downed } = {}) {
+  const clash = state.clash;
+  if (!clash) return;
+  const hero = state.heroes[clash.heroPlayerId];
+  const tile = state.map.tiles.find((t) => t.key === clash.roomKey);
+  // Clear cramps
+  hero.hand = hero.hand.filter((c) => !isCramp(c));
+  // Untap gear
+  if (hero.offhand) hero.offhand.tapped = false;
+  if (hero.armor) hero.armor.tapped = false;
+  if (victory && tile) tile.cleared = true;
+  const bossWin = Boolean(wasBoss ?? clash.isBoss) && victory;
+  state.clash = null;
+  state.phase = 'exploring';
+  if (bossWin) {
+    unlockStairs(state, 'Floor Boss defeated — Shiny Basement Key found!');
+  }
+  if (!downed) {
+    state.explorationActionsLeft = 0;
+    endHeroExplorationTurn(state);
+  } else {
+    state.explorationActionsLeft = 0;
+    endHeroExplorationTurn(state);
+  }
 }
 
 function unlockStairs(state, reason) {

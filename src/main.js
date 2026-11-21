@@ -10,6 +10,13 @@ import {
   renderRoomTile,
   renderMonsterCard,
 } from './ui/cardView.js';
+import { ASSET, SUIT_META } from './data/artMeta.js';
+import { isLegalPlay, isCramp, heroHasLegalPlay } from './game/clash.js';
+
+document.documentElement.style.setProperty(
+  '--bg-art',
+  `url(${ASSET.ui('bg-basement.webp')})`,
+);
 
 const app = document.querySelector('#app');
 
@@ -116,7 +123,7 @@ function renderLobbyShell() {
           cramp ${inv.cramp} · rooms ${inv.rooms} (recipe ${inv.defaultFloorTiles}) · monsters ${inv.monsters} · bosses ${inv.bosses}<br/>
           events ${inv.events} · merchants ${inv.merchants} · stories ${inv.stories} · themes ${inv.themes} · twists ${inv.twists}
         </div>
-        <p class="muted">MVP: lobby sync + exploration stub + clash placeholder. Full Clash &amp; Chain combat UI is next.</p>
+        <p class="muted">Lobby + exploration + Clash &amp; Chain combat (match Suit/Rank, Desperation, dealer monster turns). Art from the print-and-play compositor.</p>
       </section>
     </div>
   `;
@@ -351,29 +358,7 @@ function renderTable() {
         }
         ${renderMap(state, isDealer, meId)}
         ${
-          state.phase === 'clash' && state.clash
-            ? `
-          <div class="panel" style="box-shadow:none;border-color:rgba(217,72,59,0.35)">
-            <h3>${state.clash.isBoss ? 'Boss clash stub' : 'Clash stub'}</h3>
-            <div class="vcard-row" style="margin:0.5rem 0">
-              ${renderMonsterCard(state.clash.monsterId, {
-                size: 'table',
-                hp: state.clash.monsterHp,
-                maxHp: state.clash.monsterMaxHp,
-                isBoss: state.clash.isBoss,
-              })}
-            </div>
-            <p class="muted">${escapeHtml(state.clash.note)}</p>
-            ${
-              isDealer
-                ? `<div class="row">
-                    <button class="primary" type="button" id="btn-clash-win">Resolve: Hero wins (POOF!)</button>
-                    <button type="button" id="btn-clash-flee">Resolve: Flee</button>
-                  </div>`
-                : `<p class="muted">Waiting on dealer to resolve this stub clash…</p>`
-            }
-          </div>`
-            : ''
+          state.phase === 'clash' && state.clash ? renderClashPanel(state, isDealer, meId) : ''
         }
         <div class="row">
           ${
@@ -390,6 +375,105 @@ function renderTable() {
         <h3>Log</h3>
         <div class="log">${state.log.map((l) => `<div>${escapeHtml(l)}</div>`).join('')}</div>
       </section>
+    </div>
+  `;
+}
+
+function renderClashPanel(state, isDealer, meId) {
+  const clash = state.clash;
+  const hero = state.heroes[clash.heroPlayerId];
+  const isMyClash = meId === clash.heroPlayerId;
+  const canPlay = clash.whoseTurn === 'hero' && (isMyClash || isDealer);
+  const canMonster = isDealer && clash.whoseTurn === 'monster';
+  const activeColor = SUIT_META[clash.activeSuit]?.color || '#888';
+  const fighterHand = hero?.hand || [];
+  const showHand = isMyClash || isDealer;
+
+  return `
+    <div class="panel clash-panel" style="box-shadow:none;border-color:rgba(217,72,59,0.45)">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div>
+          <h3>${clash.isBoss ? 'Boss Clash' : 'Clash & Chain'}</h3>
+          <p class="muted" style="margin:0">${escapeHtml(clash.note || '')}</p>
+        </div>
+        <div class="pill" style="border-color:${activeColor}">
+          Active: <strong style="color:${activeColor}">${escapeHtml(clash.activeSuit || '—')} ${clash.activeRank ?? ''}</strong>
+          · Turn: <strong>${clash.whoseTurn === 'hero' ? escapeHtml(hero?.name || 'Hero') : escapeHtml(clash.monsterName)}</strong>
+        </div>
+      </div>
+      <div class="vcard-row" style="margin:0.65rem 0;align-items:stretch">
+        ${renderMonsterCard(clash.monsterId, {
+          size: 'table',
+          hp: clash.monsterHp,
+          maxHp: clash.monsterMaxHp,
+          isBoss: clash.isBoss,
+        })}
+        <div class="stack" style="min-width:120px">
+          <div class="muted">Clash pile</div>
+          ${
+            clash.topCard
+              ? renderActionCard(clash.topCard, { size: 'hand' })
+              : '<span class="muted">Empty</span>'
+          }
+          <div class="pill">HP ${clash.monsterHp}/${clash.monsterMaxHp}</div>
+          ${clash.trait ? `<p class="muted" style="max-width:14rem;font-size:0.8rem">${escapeHtml(clash.trait)}</p>` : ''}
+        </div>
+        ${renderHeroCard(hero?.heroId, { size: 'hand', downed: hero?.downed })}
+      </div>
+      ${
+        showHand
+          ? `<div>
+              <h3>Combat hand ${clash.needsDraw && canPlay ? '<span class="muted">(will draw 1 on play)</span>' : ''}</h3>
+              <div class="vcard-row hand">
+                ${fighterHand
+                  .map((c) => {
+                    const legal = canPlay && isLegalPlay(c, clash);
+                    const cramp = isCramp(c);
+                    return `<button type="button" class="clash-card-btn ${legal ? 'legal' : ''} ${cramp ? 'is-cramp' : ''}"
+                      data-clash-card="${escapeAttr(c.id)}"
+                      ${legal ? '' : 'disabled'}
+                      title="${legal ? 'Play onto Clash Pile' : cramp ? 'Cramp! — use Stretch instead' : 'Illegal vs active Suit/Rank'}">
+                      ${renderActionCard(c, { size: 'hand' })}
+                    </button>`;
+                  })
+                  .join('') || '<span class="muted">Empty hand</span>'}
+              </div>
+            </div>`
+          : `<p class="muted">${escapeHtml(hero?.name || 'Hero')}'s hand is private.</p>`
+      }
+      <div class="row" style="margin-top:0.6rem">
+        ${
+          canPlay
+            ? `
+          <button type="button" id="btn-clash-desperation">Flip Desperation</button>
+          <button type="button" id="btn-clash-cramp" ${fighterHand.some((c) => isCramp(c)) ? '' : 'disabled'}>Stretch (discard ≤2 Cramp!)</button>
+          ${!heroHasLegalPlay(hero, clash) ? '<span class="muted">No legal plays — Desperation recommended.</span>' : ''}
+        `
+            : ''
+        }
+        ${
+          canMonster
+            ? `<button class="primary" type="button" id="btn-clash-monster">Resolve monster turn</button>
+               <span class="muted">Monster hand: ${clash.monsterHand?.length ?? 0} cards</span>`
+            : ''
+        }
+        ${
+          isDealer
+            ? `<button type="button" id="btn-clash-win">Force POOF!</button>
+               <button type="button" id="btn-clash-flee">Force flee</button>`
+            : ''
+        }
+        ${
+          !canPlay && !canMonster && clash.whoseTurn === 'monster'
+            ? `<p class="muted">Waiting for dealer to resolve the monster turn…</p>`
+            : ''
+        }
+        ${
+          !canPlay && clash.whoseTurn === 'hero' && !isMyClash
+            ? `<p class="muted">Waiting for ${escapeHtml(hero?.name || 'hero')} to play…</p>`
+            : ''
+        }
+      </div>
     </div>
   `;
 }
@@ -567,6 +651,28 @@ function wireTable() {
   });
   document.getElementById('btn-clash-flee')?.addEventListener('click', () => {
     room.dispatch({ type: 'resolve-clash-stub', result: 'flee' });
+  });
+  document.getElementById('btn-clash-monster')?.addEventListener('click', () => {
+    room.dispatch({ type: 'clash-monster-turn' });
+  });
+  document.getElementById('btn-clash-desperation')?.addEventListener('click', () => {
+    room.dispatch({ type: 'clash-desperation' });
+  });
+  document.getElementById('btn-clash-cramp')?.addEventListener('click', () => {
+    room.dispatch({ type: 'clash-clear-cramp' });
+  });
+  document.querySelectorAll('[data-clash-card]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const cardId = btn.getAttribute('data-clash-card');
+      const clash = session.state.clash;
+      const action = { type: 'clash-play', cardId };
+      const card = clash && session.state.heroes[clash.heroPlayerId]?.hand?.find((c) => c.id === cardId);
+      if (card?.type === 'wild' || card?.kind === 'wild') {
+        const hero = session.state.heroes[clash.heroPlayerId];
+        action.wildSuit = hero?.preferredSuit || 'brawn';
+      }
+      room.dispatch(action);
+    });
   });
   document.getElementById('btn-dealer-log')?.addEventListener('click', () => {
     const message = document.getElementById('dealer-note')?.value?.trim();

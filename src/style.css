@@ -40,6 +40,12 @@ body {
 
 body {
   min-height: 100vh;
+  background-image:
+    linear-gradient(165deg, rgba(26, 21, 16, 0.82), rgba(42, 33, 24, 0.88) 45%, rgba(35, 28, 21, 0.9)),
+    var(--bg-art, none);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
 }
 
 #app {

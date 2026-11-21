@@ -1,34 +1,23 @@
-﻿# Link print-and-play art from the sibling cardgame project (art/frames/icons only).
+﻿# Prefer optimized WebP copies. Falls back to junction if optimize hasn't been run.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $dest = Join-Path $root 'public\assets'
+$report = Join-Path $dest 'optimize-report.txt'
 $src = Join-Path (Split-Path -Parent $root) 'cardgame\assets'
 
-if (-not (Test-Path $src)) {
-  Write-Error "Expected art at $src — open the main cardgame project beside cardgame_virtual."
+if (Test-Path $report) {
+  Write-Host "Optimized assets already present at $dest"
+  exit 0
 }
 
-function Remove-Path($path) {
-  if (-not (Test-Path $path)) { return }
-  cmd /c "rmdir `"$path`"" 2>$null | Out-Null
-  if (Test-Path $path) { Remove-Item $path -Recurse -Force }
+Write-Host "No optimized assets yet — running npm run optimize-assets…"
+Push-Location $root
+try {
+  node ./scripts/optimize-assets.mjs
+} finally {
+  Pop-Location
 }
 
-Remove-Path $dest
-New-Item -ItemType Directory -Path $dest -Force | Out-Null
-
-foreach ($name in @('art', 'frames', 'icons')) {
-  $from = Join-Path $src $name
-  $to = Join-Path $dest $name
-  if (-not (Test-Path $from)) {
-    Write-Warning "Missing $from"
-    continue
-  }
-  cmd /c "mklink /J `"$to`" `"$from`""
-  if ($LASTEXITCODE -ne 0) {
-    Write-Host "Junction failed for $name; copying…"
-    Copy-Item -Path $from -Destination $to -Recurse -Force
-  }
+if (-not (Test-Path $report)) {
+  Write-Error "optimize-assets failed and no report at $report (source expected at $src)"
 }
-
-Write-Host "Assets ready at $dest (art, frames, icons)"

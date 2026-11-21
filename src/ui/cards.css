@@ -398,3 +398,32 @@
     grid-template-columns: 1fr;
   }
 }
+
+.clash-card-btn {
+  appearance: none;
+  background: transparent;
+  border: 2px solid transparent;
+  padding: 0;
+  border-radius: 10px;
+  cursor: default;
+}
+
+.clash-card-btn.legal {
+  cursor: pointer;
+  border-color: rgba(111, 158, 122, 0.85);
+  box-shadow: 0 0 0 1px rgba(111, 158, 122, 0.35);
+  transform: translateY(-2px);
+}
+
+.clash-card-btn.legal:hover {
+  border-color: #8fbf9a;
+}
+
+.clash-card-btn:disabled {
+  opacity: 0.55;
+  filter: grayscale(0.25);
+}
+
+.clash-panel .vcard {
+  animation: rise 0.35s ease both;
+}

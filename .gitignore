@@ -12,8 +12,8 @@ dist
 dist-ssr
 *.local
 
-# Art lives in sibling D:\Projects\cardgame\assets (junction/copy via npm run assets)
-public/assets
+# Source PNGs stay in sibling cardgame/; optimized WebP lives in public/assets (committed)
+public/assets/optimize-report.txt
 
 # Editor directories and files
 .vscode/*

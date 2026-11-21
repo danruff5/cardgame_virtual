@@ -69,7 +69,16 @@ export function createHeroRuntime(heroId, soloHardMode = false) {
   if (!def) throw new Error(`Unknown hero ${heroId}`);
   const loadout = def.starterGear.map((gid) => {
     const g = getGear(gid);
-    return { id: gid, name: g.name, slot: g.slot, tapped: false };
+    return {
+      id: gid,
+      name: g.name,
+      slot: g.slot,
+      tapped: false,
+      strike: g.strike,
+      strikeBonusSuit: g.strikeBonusSuit,
+      tapBlock: g.tapBlock,
+      ignoreRanks: g.ignoreRanks,
+    };
   });
   const belt = [];
   if (soloHardMode) {
@@ -92,6 +101,7 @@ export function createHeroRuntime(heroId, soloHardMode = false) {
     hand: [], // action card instances (private)
     roomKey: null,
     explorationUsedThisTurn: 0,
+    perkUsedThisClash: false,
   };
 }
 

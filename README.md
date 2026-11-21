@@ -6,17 +6,17 @@ Target public URL (later): **https://cardgame.ruffarc.ca**
 
 ## Quick start (local)
 
-Art PNGs come from the sibling print-and-play project (`D:\Projects\cardgame\assets`). `npm run assets` (also runs on `predev` / `prebuild`) junctions that folder into `public/assets`.
+Art is generated in the sibling print-and-play project (`D:\Projects\cardgame\assets`), then **web-optimized** into this app:
 
 ```bash
 npm install
-npm run assets   # if art isn't linked yet
+npm run optimize-assets   # 1024px PNG → ~512 WebP (also runs via predev/prebuild if missing)
 npm run dev
 ```
 
 Open the printed local URL (usually `http://localhost:5173`).
 
-Card UI reuses the same 4-layer HTML compositor look as `cardgame/prototype/print_and_play.html` (frames + art + icons + parchment chrome).
+Card UI reuses the same 4-layer HTML compositor look as `cardgame/prototype/print_and_play.html` (frames + art + icons + parchment chrome). Optimized copies live in `public/assets/{art,frames,icons,ui}/`.
 
 - **Host as Dealer** on one browser/tab (or machine).
 - Share the **room code** or join link (`?room=CODE`).
