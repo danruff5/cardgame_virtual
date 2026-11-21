@@ -23,6 +23,7 @@ export class PeerRoom {
     this.state = null;
     this.connections = new Map(); // peerId -> DataConnection (host only)
     this.hostConn = null; // client → host
+    this.busy = false;
   }
 
   _status(msg) {
@@ -44,7 +45,20 @@ export class PeerRoom {
     });
   }
 
+  /** Client already has authoritative snapshot from host. */
+  _emitClientState(state) {
+    this.state = state;
+    this.onState?.(state, {
+      role: this.role,
+      playerId: this.playerId,
+      roomCode: this.roomCode,
+      isHost: false,
+    });
+  }
+
   async host({ name, roomCode } = {}) {
+    if (this.busy || this.peer) throw new Error('Already in a room — refresh to start over.');
+    this.busy = true;
     this.role = 'dealer';
     this.playerName = name || 'Dealer';
     this.playerId = uid('dealer');
@@ -52,7 +66,12 @@ export class PeerRoom {
     const peerId = peerIdForRoom(this.roomCode);
 
     this._status(`Opening dealer peer ${peerId}…`);
-    this.peer = await openPeer(peerId);
+    try {
+      this.peer = await openPeer(peerId);
+    } catch (err) {
+      this.busy = false;
+      throw err;
+    }
     this.state = createEmptyState(this.roomCode, this.playerId, this.playerName);
 
     this.peer.on('connection', (conn) => {
@@ -69,37 +88,66 @@ export class PeerRoom {
   }
 
   async join({ roomCode, name } = {}) {
+    if (this.busy || this.state) throw new Error('Already joining/joined — refresh to rejoin.');
+    this.busy = true;
     this.role = 'hero';
     this.playerName = name || 'Hero';
     this.playerId = uid('hero');
     this.roomCode = String(roomCode || '').toUpperCase();
-    if (!this.roomCode) throw new Error('Room code required');
+    if (!this.roomCode) {
+      this.busy = false;
+      throw new Error('Room code required');
+    }
 
     const hostPeerId = peerIdForRoom(this.roomCode);
     this._status(`Connecting to ${hostPeerId}…`);
-    this.peer = await openPeer(); // random id for client
 
-    const conn = this.peer.connect(hostPeerId, { reliable: true });
+    try {
+      this.peer = await openPeer(); // random id for client
+    } catch (err) {
+      this.busy = false;
+      throw err;
+    }
+
+    const conn = this.peer.connect(hostPeerId, { reliable: true, serialization: 'json' });
     this.hostConn = conn;
 
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Timed out joining room (is the dealer online?)')), 15000);
-      conn.on('open', () => {
+    // Attach data handler BEFORE open completes so welcome/state are never missed.
+    const firstState = new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('Connected but no lobby sync from dealer (try again).')),
+        12000,
+      );
+      conn.on('data', (msg) => {
+        this._onClientMessage(msg);
+        if (msg?.type === 'state' || (msg?.type === 'welcome' && msg.state)) {
+          clearTimeout(timer);
+          resolve(msg.state || this.state);
+        }
+      });
+      conn.on('close', () => {
         clearTimeout(timer);
-        resolve();
+        this._status('Disconnected from dealer.');
       });
       conn.on('error', (err) => {
         clearTimeout(timer);
         reject(err);
       });
+    });
+
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Timed out joining room (is the dealer online?)')), 15000);
+      const onOpen = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      if (conn.open) onOpen();
+      else conn.on('open', onOpen);
       this.peer.on('error', (err) => {
         clearTimeout(timer);
         reject(err);
       });
     });
-
-    conn.on('data', (msg) => this._onClientMessage(msg));
-    conn.on('close', () => this._status('Disconnected from dealer.'));
 
     conn.send({
       type: 'hello',
@@ -107,7 +155,9 @@ export class PeerRoom {
       name: this.playerName,
     });
 
-    this._status(`Joined room ${this.roomCode}. Waiting for sync…`);
+    this._status(`Joined room ${this.roomCode}. Syncing lobby…`);
+    await firstState;
+    this._status(`In lobby for room ${this.roomCode}.`);
   }
 
   /** Host or client sends a game action. */
@@ -149,23 +199,48 @@ export class PeerRoom {
     } catch {
       /* ignore */
     }
+    this.peer = null;
+    this.hostConn = null;
+    this.state = null;
+    this.role = null;
+    this.playerId = null;
+    this.roomCode = null;
+    this.busy = false;
   }
 
   _wireHostConnection(conn) {
+    // Register immediately — incoming PeerJS connections may already be open,
+    // so waiting only on the 'open' event can drop them from the broadcast map.
+    this.connections.set(conn.peer, conn);
+    this._status(`Peer connected: ${conn.peer}`);
+
     conn.on('open', () => {
       this.connections.set(conn.peer, conn);
-      this._status(`Peer connected: ${conn.peer}`);
     });
     conn.on('data', (msg) => this._onHostMessage(conn, msg));
     conn.on('close', () => {
       this.connections.delete(conn.peer);
-      // mark player disconnected if we tracked peer→player
+      const player = this.state?.players?.find((p) => p.peerId === conn.peer);
+      if (player) player.connected = false;
       this._status(`Peer left: ${conn.peer}`);
+      this._emitState();
     });
+  }
+
+  _sendStateTo(conn, playerId) {
+    if (!conn || !playerId || !this.state) return;
+    try {
+      conn.send({ type: 'state', state: viewForPlayer(this.state, playerId) });
+    } catch (err) {
+      this._error(`Failed to sync state: ${err.message || err}`);
+    }
   }
 
   _onHostMessage(conn, msg) {
     if (!msg || typeof msg !== 'object') return;
+
+    // Ensure this conn is tracked even if open raced
+    this.connections.set(conn.peer, conn);
 
     if (msg.type === 'hello') {
       const existing = this.state.players.find((p) => p.id === msg.playerId);
@@ -186,7 +261,17 @@ export class PeerRoom {
         existing.peerId = conn.peer;
         if (msg.name) existing.name = String(msg.name).slice(0, 24);
       }
-      conn.send({ type: 'welcome', playerId: msg.playerId, role: 'hero' });
+
+      const view = viewForPlayer(this.state, msg.playerId);
+      // Bundle state in welcome so the joiner never depends only on broadcast map timing.
+      conn.send({
+        type: 'welcome',
+        playerId: msg.playerId,
+        role: 'hero',
+        roomCode: this.roomCode,
+        state: view,
+      });
+      this._sendStateTo(conn, msg.playerId);
       this._broadcastAll();
       this._emitState();
       return;
@@ -195,6 +280,12 @@ export class PeerRoom {
     if (msg.type === 'action') {
       this._hostApply(msg.action, msg.playerId || this.playerId);
     }
+
+    if (msg.type === 'request-state') {
+      const player = this.state.players.find((p) => p.id === msg.playerId) ||
+        this.state.players.find((p) => p.peerId === conn.peer);
+      if (player) this._sendStateTo(conn, player.id);
+    }
   }
 
   _onClientMessage(msg) {
@@ -202,11 +293,14 @@ export class PeerRoom {
     if (msg.type === 'welcome') {
       this.playerId = msg.playerId || this.playerId;
       this.role = msg.role || 'hero';
+      if (msg.roomCode) this.roomCode = msg.roomCode;
       this._status('Welcome received from dealer.');
+      if (msg.state) {
+        this._emitClientState(msg.state);
+      }
     }
-    if (msg.type === 'state') {
-      this.state = msg.state;
-      this._emitState();
+    if (msg.type === 'state' && msg.state) {
+      this._emitClientState(msg.state);
     }
     if (msg.type === 'error') {
       this._error(msg.error || 'Host rejected action');
@@ -217,10 +311,6 @@ export class PeerRoom {
     const result = applyAction(this.state, action, actorId);
     if (!result.ok) {
       this._error(result.error);
-      // Still notify actor if remote
-      for (const conn of this.connections.values()) {
-        // optional: targeted errors skipped for MVP
-      }
       return;
     }
     this.state = result.state;
@@ -230,11 +320,10 @@ export class PeerRoom {
 
   _broadcastAll() {
     for (const conn of this.connections.values()) {
-      // Find player for this peer
       const player = this.state.players.find((p) => p.peerId === conn.peer);
-      const viewerId = player?.id;
-      if (!viewerId || !conn.open) continue;
-      conn.send({ type: 'state', state: viewForPlayer(this.state, viewerId) });
+      if (!player) continue;
+      if (conn.open === false) continue;
+      this._sendStateTo(conn, player.id);
     }
   }
 }

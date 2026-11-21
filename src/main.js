@@ -12,6 +12,7 @@ const session = {
   status: 'Ready.',
   error: '',
   name: localStorage.getItem('cbc-name') || '',
+  joining: false,
 };
 
 const room = new PeerRoom({
@@ -86,16 +87,17 @@ function renderLobbyShell() {
           <input id="name" maxlength="24" value="${escapeAttr(session.name)}" placeholder="Dealer Dani" />
         </div>
         <div class="row">
-          <button class="primary" id="btn-host" type="button">Host as Dealer</button>
+          <button class="primary" id="btn-host" type="button" ${session.joining ? 'disabled' : ''}>Host as Dealer</button>
         </div>
         <hr style="border:0;border-top:1px solid var(--line);margin:0.4rem 0" />
         <h3>Join a room</h3>
+        <p class="muted">After a successful join you should see the shared <strong>Lobby</strong> (player list + hero picks) — not this screen.</p>
         <div class="field">
           <label for="join-code">Room code</label>
-          <input id="join-code" maxlength="8" value="${escapeAttr(pendingRoom || '')}" placeholder="e.g. K7MP" />
+          <input id="join-code" maxlength="8" value="${escapeAttr(pendingRoom || '')}" placeholder="e.g. K7MP" ${session.joining ? 'disabled' : ''} />
         </div>
         <div class="row">
-          <button id="btn-join" type="button">Join as Hero</button>
+          <button id="btn-join" type="button" ${session.joining ? 'disabled' : ''}>${session.joining ? 'Joining…' : 'Join as Hero'}</button>
         </div>
       </section>
       <section class="panel stack">
@@ -130,14 +132,29 @@ function wireLobby() {
     }
   });
   document.getElementById('btn-join')?.addEventListener('click', async () => {
+    if (session.joining || session.state) return;
     session.name = (nameEl?.value || 'Hero').trim();
     localStorage.setItem('cbc-name', session.name);
     const code = document.getElementById('join-code')?.value.trim();
+    session.joining = true;
+    session.status = 'Joining…';
+    session.error = '';
+    render();
     try {
       await room.join({ roomCode: code, name: session.name });
-      history.replaceState({}, '', buildJoinUrl(code.toUpperCase()));
+      history.replaceState({}, '', buildJoinUrl(String(code).toUpperCase()));
+      session.joining = false;
+      session.status = `In lobby for room ${String(code).toUpperCase()}.`;
+      render();
     } catch (err) {
       session.error = err.message || String(err);
+      session.status = 'Join failed — keep the dealer tab open, then try again.';
+      session.joining = false;
+      try {
+        room.destroy();
+      } catch {
+        /* ignore */
+      }
       render();
     }
   });
