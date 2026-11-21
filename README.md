@@ -10,8 +10,14 @@ Art is generated in the sibling print-and-play project (`D:\Projects\cardgame\as
 
 ```bash
 npm install
-npm run optimize-assets   # 1024px PNG → ~512 WebP (also runs via predev/prebuild if missing)
 npm run dev
+```
+
+To re-generate WebP from sibling `../cardgame/assets` (optional; optimized art is already committed):
+
+```bash
+npm install -D sharp
+npm run optimize-assets -- --force
 ```
 
 Open the printed local URL (usually `http://localhost:5173`).

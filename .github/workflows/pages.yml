@@ -24,7 +24,6 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      # public/assets WebP is committed; skip sharp optimize on CI
       - run: npx vite build
       - name: Verify CNAME
         run: |

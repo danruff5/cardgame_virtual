@@ -9,12 +9,9 @@
     "preview": "vite preview",
     "deploy": "npm run build",
     "assets": "node ./scripts/optimize-assets.mjs",
-    "predev": "npm run assets",
-    "prebuild": "npm run assets",
     "optimize-assets": "node ./scripts/optimize-assets.mjs"
   },
   "devDependencies": {
-    "sharp": "^0.35.5",
     "vite": "^8.3.6"
   },
   "dependencies": {
