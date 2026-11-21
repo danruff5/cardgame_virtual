@@ -1,7 +1,15 @@
 import './style.css';
+import './ui/cards.css';
 import { PeerRoom, readRoomFromUrl, buildJoinUrl } from './net/peerRoom.js';
 import { dataInventory, HEROES, THEMES, BOSSES, SUITS } from './data/index.js';
 import { adjacentOrthogonal } from './game/state.js';
+import {
+  renderActionCard,
+  renderHeroCard,
+  renderGearChip,
+  renderRoomTile,
+  renderMonsterCard,
+} from './ui/cardView.js';
 
 const app = document.querySelector('#app');
 
@@ -225,23 +233,28 @@ function renderLobbyGame() {
             const taken = state.players.find((p) => p.heroId === h.id);
             const mine = me?.heroId === h.id;
             return `
-              <div class="panel" style="padding:0.7rem;box-shadow:none">
-                <strong style="color:${SUITS[h.preferredSuit]?.color || 'inherit'}">${escapeHtml(h.name)}</strong>
-                <span class="muted"> ${escapeHtml(h.title)}</span>
-                <p style="margin:0.35rem 0;font-size:0.88rem">${escapeHtml(h.perk.name)} — ${escapeHtml(h.perk.text)}</p>
-                <div class="row">
-                  ${
-                    isDealer
-                      ? `<select data-assign="${h.id}">
-                          <option value="">Assign to…</option>
-                          ${state.players
-                            .filter((p) => p.role === 'hero')
-                            .map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`)
-                            .join('')}
-                        </select>
-                        <button type="button" data-assign-btn="${h.id}" ${taken && !mine ? 'disabled' : ''}>Assign</button>`
-                      : `<button type="button" data-pick="${h.id}" ${taken && !mine ? 'disabled' : ''}>${mine ? 'Selected' : taken ? 'Taken' : 'Choose'}</button>`
-                  }
+              <div class="panel hero-pick-card" style="padding:0.7rem;box-shadow:none">
+                ${renderHeroCard(h.id, { size: 'table' })}
+                <div class="stack">
+                  <div>
+                    <strong style="color:${SUITS[h.preferredSuit]?.color || 'inherit'}">${escapeHtml(h.name)}</strong>
+                    <span class="muted"> ${escapeHtml(h.title)}</span>
+                  </div>
+                  <p style="margin:0;font-size:0.88rem">${escapeHtml(h.perk.name)} — ${escapeHtml(h.perk.text)}</p>
+                  <div class="row">
+                    ${
+                      isDealer
+                        ? `<select data-assign="${h.id}">
+                            <option value="">Assign to…</option>
+                            ${state.players
+                              .filter((p) => p.role === 'hero')
+                              .map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`)
+                              .join('')}
+                          </select>
+                          <button type="button" data-assign-btn="${h.id}" ${taken && !mine ? 'disabled' : ''}>Assign</button>`
+                        : `<button type="button" data-pick="${h.id}" ${taken && !mine ? 'disabled' : ''}>${mine ? 'Selected' : taken ? 'Taken' : 'Choose'}</button>`
+                    }
+                  </div>
                 </div>
               </div>`;
           }).join('')}
@@ -342,7 +355,14 @@ function renderTable() {
             ? `
           <div class="panel" style="box-shadow:none;border-color:rgba(217,72,59,0.35)">
             <h3>${state.clash.isBoss ? 'Boss clash stub' : 'Clash stub'}</h3>
-            <p><strong>${escapeHtml(state.clash.monsterName)}</strong> — HP ${state.clash.monsterHp}/${state.clash.monsterMaxHp} · Base ${state.clash.baseDmg} · Cunning ${state.clash.cunning}</p>
+            <div class="vcard-row" style="margin:0.5rem 0">
+              ${renderMonsterCard(state.clash.monsterId, {
+                size: 'table',
+                hp: state.clash.monsterHp,
+                maxHp: state.clash.monsterMaxHp,
+                isBoss: state.clash.isBoss,
+              })}
+            </div>
             <p class="muted">${escapeHtml(state.clash.note)}</p>
             ${
               isDealer
@@ -401,7 +421,7 @@ function renderMap(state, isDealer, meId) {
         .join('');
       const movable =
         canMove && from && adjacentOrthogonal(from, tile) && !state.clash;
-      let label = tile.faceUp ? tile.name : '???';
+      let label = tile.faceUp ? shortRoomLabel(tile) : '???';
       if (tile.kind === 'stairs' && tile.faceUp) {
         label = tile.locked || !state.floor?.stairsUnlocked ? 'Stairs 🔒' : 'Stairs ✓';
       }
@@ -412,7 +432,7 @@ function renderMap(state, isDealer, meId) {
             : 'stairs-locked'
           : '';
       cells.push(`
-        <button type="button" class="map-cell ${tile.faceUp ? 'face-up' : 'face-down'} ${tile.kind} ${stairsClass} ${movable ? 'clickable' : ''}"
+        <button type="button" class="map-cell with-art ${tile.faceUp ? 'face-up' : 'face-down'} ${tile.kind} ${stairsClass} ${movable ? 'clickable' : ''}"
           ${movable ? `data-move-x="${tile.x}" data-move-y="${tile.y}"` : 'disabled'}
           title="${escapeAttr(
             tile.faceUp
@@ -423,12 +443,28 @@ function renderMap(state, isDealer, meId) {
                 : tile.rule || tile.name
               : 'Face-down room',
           )}">
-          <span>${escapeHtml(label)}</span>
+          ${renderRoomTile(tile, { size: 'mini', stairsUnlocked: state.floor?.stairsUnlocked })}
+          <span class="map-label">${escapeHtml(label)}</span>
           ${pawns}
         </button>`);
     }
   }
   return `<div class="map-grid" style="grid-template-columns:repeat(${state.map.width}, auto)">${cells.join('')}</div>`;
+}
+
+function shortRoomLabel(tile) {
+  const map = {
+    entrance: 'Entrance',
+    stairs: 'Stairs',
+    shrine: 'Shrine',
+    monster: 'Lair',
+    boss: 'Boss',
+    vault: 'Vault',
+    trap: 'Trap',
+    story: 'Story',
+    hallway: 'Hall',
+  };
+  return map[tile.kind] || tile.name;
 }
 
 function renderDealerTools(state) {
@@ -477,25 +513,25 @@ function renderHeroPanels(state, meId, isDealer) {
         : hero.hand.map((c) => ({ ...c, hidden: true }));
       return `
         <div class="panel" style="box-shadow:none;padding:0.7rem">
-          <div class="row" style="justify-content:space-between">
-            <strong>${escapeHtml(hero.name)}</strong>
-            <span class="pill">HP ${hero.hp}/${hero.maxHp}${hero.downed ? ' · DOWNED' : ''}</span>
+          <div class="hero-pick-card">
+            ${renderHeroCard(hero.heroId, { size: 'hand', downed: hero.downed })}
+            <div>
+              <div class="row" style="justify-content:space-between">
+                <strong>${escapeHtml(hero.name)}</strong>
+                <span class="pill">HP ${hero.hp}/${hero.maxHp}${hero.downed ? ' · DOWNED' : ''}</span>
+              </div>
+              <div class="muted">${escapeHtml(player?.name || pid)} · ${escapeHtml(hero.perk?.name || '')}</div>
+              <div class="vcard-row" style="margin:0.45rem 0">
+                ${hero.weapon ? renderGearChip(hero.weapon.id) : ''}
+                ${hero.offhand ? renderGearChip(hero.offhand.id) : ''}
+                ${hero.armor ? renderGearChip(hero.armor.id) : ''}
+                ${(hero.belt || []).map((b) => renderGearChip(b.id)).join('')}
+              </div>
+            </div>
           </div>
-          <div class="muted">${escapeHtml(player?.name || pid)} · ${escapeHtml(hero.perk?.name || '')}</div>
-          <div class="gear-row" style="margin:0.4rem 0">
-            ${hero.weapon ? `<span>◄ ${escapeHtml(hero.weapon.name)}</span>` : ''}
-            ${hero.offhand ? `<span>► ${escapeHtml(hero.offhand.name)}</span>` : ''}
-            ${hero.armor ? `<span>▼ ${escapeHtml(hero.armor.name)}</span>` : ''}
-            ${(hero.belt || []).map((b) => `<span>Belt: ${escapeHtml(b.name)}</span>`).join('')}
-          </div>
-          <div class="hand">
-            ${hand
-              .map((c) => {
-                if (c.hidden) return `<div class="card-chip hidden">🂠</div>`;
-                const suitClass = c.suit || c.type || '';
-                return `<div class="card-chip ${suitClass}"><strong>${escapeHtml(c.name || c.title || c.id)}</strong></div>`;
-              })
-              .join('') || '<span class="muted">Empty hand</span>'}
+          <h3 style="margin-top:0.5rem">Hand</h3>
+          <div class="vcard-row hand">
+            ${hand.map((c) => renderActionCard(c, { size: 'hand' })).join('') || '<span class="muted">Empty hand</span>'}
           </div>
         </div>`;
     })

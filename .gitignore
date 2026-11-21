@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Art lives in sibling D:\Projects\cardgame\assets (junction/copy via npm run assets)
+public/assets
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

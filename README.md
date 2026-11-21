@@ -6,12 +6,17 @@ Target public URL (later): **https://cardgame.ruffarc.ca**
 
 ## Quick start (local)
 
+Art PNGs come from the sibling print-and-play project (`D:\Projects\cardgame\assets`). `npm run assets` (also runs on `predev` / `prebuild`) junctions that folder into `public/assets`.
+
 ```bash
 npm install
+npm run assets   # if art isn't linked yet
 npm run dev
 ```
 
 Open the printed local URL (usually `http://localhost:5173`).
+
+Card UI reuses the same 4-layer HTML compositor look as `cardgame/prototype/print_and_play.html` (frames + art + icons + parchment chrome).
 
 - **Host as Dealer** on one browser/tab (or machine).
 - Share the **room code** or join link (`?room=CODE`).
@@ -95,11 +100,14 @@ GitHub will serve this project’s Pages site when the repo’s CNAME / custom d
 ### Build artifact
 
 ```bash
+npm run assets   # link or copy art from ../cardgame/assets
 npm run build
-# upload / serve the dist/ folder
+# upload / serve the dist/ folder (includes copied art under dist/assets/)
 ```
 
 `vite.config.js` uses `base: './'` so assets resolve on project Pages paths and on the custom domain root.
+
+**Note:** `public/assets` is gitignored (large PNGs). For Pages CI, copy or cache `../cardgame/assets` into `public/assets` before `vite build`, or vendor a trimmed art set into this repo later.
 
 ## Data sources
 
