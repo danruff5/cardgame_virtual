@@ -7,4 +7,8 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
   },
+  test: {
+    include: ['src/**/*.test.js', 'tests/**/*.test.js'],
+    environment: 'node',
+  },
 });

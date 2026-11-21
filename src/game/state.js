@@ -49,10 +49,10 @@ export function createEmptyState(roomCode, hostPlayerId, hostName) {
     activeHeroIndex: 0,
     explorationActionsLeft: 2,
     map: {
-      // Simple stub map: linear/cross of recipe tiles placed on a grid by dealer later
-      tiles: [], // { key, x, y, roomId, faceUp, cleared, looted }
+      tiles: [], // { key, x, y, roomId, faceUp, cleared, looted, ... }
       width: 0,
       height: 0,
+      barriers: [], // Sticky Door Jam: [{ aKey, bKey }]
     },
     decks: {
       action: [],
@@ -78,23 +78,10 @@ export function createEmptyState(roomCode, hostPlayerId, hostName) {
 export function createHeroRuntime(heroId, soloHardMode = false) {
   const def = HEROES.find((h) => h.id === heroId);
   if (!def) throw new Error(`Unknown hero ${heroId}`);
-  const loadout = def.starterGear.map((gid) => {
-    const g = getGear(gid);
-    return {
-      id: gid,
-      name: g.name,
-      slot: g.slot,
-      tapped: false,
-      strike: g.strike,
-      strikeBonusSuit: g.strikeBonusSuit,
-      tapBlock: g.tapBlock,
-      ignoreRanks: g.ignoreRanks,
-    };
-  });
+  const loadout = def.starterGear.map((gid) => gearRuntimeFromId(gid));
   const belt = [];
   if (soloHardMode) {
-    const charm = getGear('G-30');
-    belt.push({ id: 'G-30', name: charm.name, slot: 'belt' });
+    belt.push(gearRuntimeFromId('G-30'));
   }
   return {
     heroId,
@@ -114,6 +101,28 @@ export function createHeroRuntime(heroId, soloHardMode = false) {
     explorationUsedThisTurn: 0,
     perkUsedThisClash: false,
     shrineUsedThisFloor: false,
+    secondWindUsed: false,
+    stuntGearUsed: { scarf: false, kaleidoscope: false },
+  };
+}
+
+/** Runtime gear instance with rule flags from catalog. */
+export function gearRuntimeFromId(gid) {
+  const g = getGear(gid);
+  if (!g) return { id: gid, name: gid, slot: 'belt', tapped: false };
+  return {
+    id: gid,
+    name: g.name,
+    slot: g.slot,
+    tapped: false,
+    strike: g.strike,
+    strikeBonusSuit: g.strikeBonusSuit,
+    tapBlock: g.tapBlock,
+    ignoreRanks: g.ignoreRanks ? [...g.ignoreRanks] : undefined,
+    gritIgnoresArmor: Boolean(g.gritIgnoresArmor),
+    type: g.type || null,
+    heal: g.heal,
+    rule: g.rule,
   };
 }
 
