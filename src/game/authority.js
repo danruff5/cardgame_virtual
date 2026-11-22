@@ -158,7 +158,7 @@ export function applyAction(state, action, actorId) {
         const stairsDist = next.map.stairsDistance ?? '?';
         appendLog(
           next,
-          `Floor 1 begins! Theme: ${theme.name}. Boss waiting: ${boss.name} (${bossHp(next.bossId, heroes.length)} HP).`,
+          `Floor 1 begins! Theme: ${theme.name}. Boss waiting: ${boss.name} (${bossHp(next.bossId, 1)} HP, +3 per extra Hero in the fight).`,
         );
         appendLog(
           next,

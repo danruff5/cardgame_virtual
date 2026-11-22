@@ -1,14 +1,17 @@
 import './style.css';
 import './ui/cards.css';
 import './ui/coachmarks.css';
+import './ui/clash.css';
 import { PeerRoom, readRoomFromUrl, buildJoinUrl } from './net/peerRoom.js';
 import { dataInventory, HEROES, THEMES, BOSSES, SUITS } from './data/index.js';
 import { adjacentOrthogonal, tilesConnect } from './game/state.js';
+import { bossGather } from './game/boss.js';
 import {
   renderActionCard,
   renderHeroCard,
   renderGearChip,
   renderRoomTile,
+  renderMonsterCard,
 } from './ui/cardView.js';
 import { ASSET, SUIT_META } from './data/artMeta.js';
 import {
@@ -17,14 +20,7 @@ import {
   setCoachChangeHandler,
   syncCoachAfterRender,
 } from './ui/coachmarks.js';
-import {
-  renderClashModal,
-  consumeClashFx,
-  syncClashBodyScrollLock,
-  wireClashModal,
-  wireTableLogHovers,
-  formatCombatLogLine,
-} from './ui/clashModal.js';
+import { syncClashModal, wireTableLogHovers, formatCombatLogLine } from './ui/clashModal.js';
 
 document.documentElement.style.setProperty(
   '--bg-art',
@@ -109,7 +105,13 @@ function render() {
     app.innerHTML = renderTable();
     wireTable();
   }
-  syncClashBodyScrollLock(Boolean(session.state?.phase === 'clash' && session.state?.clash));
+  syncClashModal({
+    session,
+    room,
+    state: session.state,
+    isDealer: Boolean(session.meta?.isHost),
+    meId: session.meta?.playerId,
+  });
   syncCoachAfterRender(coachContext());
   paintCoach();
 }
@@ -383,7 +385,6 @@ function renderTable() {
   const activePlayer = state.players.find((p) => p.id === activeId);
   const theme = THEMES.find((t) => t.id === state.themeId);
   const boss = BOSSES.find((b) => b.id === state.bossId);
-  const clashFx = consumeClashFx(session, state);
 
   return `
     ${brand()}
@@ -412,6 +413,7 @@ function renderTable() {
                   : ''
               }</p>`
         }
+        ${renderBossGather(state, isDealer, meId)}
         ${renderMap(state, isDealer, meId)}
         ${renderPending(state, isDealer, meId)}
         ${renderRoomActions(state, isDealer, meId)}
@@ -431,12 +433,48 @@ function renderTable() {
         <div class="log">${state.log.map((l) => `<div>${formatCombatLogLine(l)}</div>`).join('')}</div>
       </section>
     </div>
-    ${
-      state.phase === 'clash' && state.clash
-        ? renderClashModal(state, isDealer, meId, clashFx)
-        : ''
-    }
   `;
+}
+
+/**
+ * Boss Chamber found but not fought yet: the boss waits while the party gathers.
+ * The dealer, or any hero standing in the chamber, calls the fight when ready.
+ */
+function renderBossGather(state, isDealer, meId) {
+  const gather = bossGather(state);
+  if (!gather.waiting) return '';
+  const names = gather.heroIds.map((pid) => state.heroes[pid]?.name || pid);
+  const inside = gather.heroIds.includes(meId);
+  const canStart = !state.pending && gather.heroIds.length > 0 && (isDealer || inside);
+  const count = gather.heroIds.length;
+  let hint = '';
+  if (!count) {
+    hint = 'Nobody is in the chamber yet — walk a Hero in to be able to start.';
+  } else if (!isDealer && !inside) {
+    hint = 'Move into the Boss Chamber to fight from the start, or pile in later from the room next door.';
+  } else if (state.pending) {
+    hint = 'Resolve the room prompt first.';
+  }
+  return `
+    <div class="panel boss-gather" data-coach="boss-gather">
+      <div class="boss-gather-card">${renderMonsterCard(gather.boss.id, { size: 'hand', isBoss: true })}</div>
+      <div class="stack">
+        <div>
+          <h3>${escapeHtml(gather.boss.name)} is waiting</h3>
+          <p class="muted" style="margin:0">The Boss won't fight until someone calls it. Keep exploring, grab loot, and gather in the Boss Chamber first.</p>
+        </div>
+        <p style="margin:0">
+          In the chamber: <strong>${count ? escapeHtml(names.join(', ')) : 'no one yet'}</strong>
+          <span class="muted"> · Boss starts at ${gather.projectedHp} HP (+3 per extra Hero)</span>
+        </p>
+        <div class="row">
+          <button class="primary" type="button" id="btn-boss-start" ${canStart ? '' : 'disabled'}>
+            Start Boss fight${count ? ` (${count} Hero${count === 1 ? '' : 'es'})` : ''}
+          </button>
+          ${hint ? `<span class="muted">${escapeHtml(hint)}</span>` : ''}
+        </div>
+      </div>
+    </div>`;
 }
 
 function barrierBetween(state, a, b) {
@@ -451,29 +489,10 @@ function renderMap(state, isDealer, meId) {
   const activeId = state.turnOrder[state.activeHeroIndex];
   const activeHero = state.heroes[activeId];
   const from = state.map.tiles.find((t) => t.key === activeHero?.roomKey);
-  // During boss clash, any conscious hero not yet in the fight can move into the boss room.
-  const myHero = state.heroes[meId];
-  const canJoinBoss =
-    state.phase === 'clash' &&
-    state.clash?.isBoss &&
-    myHero &&
-    !myHero.downed &&
-    !(state.clash.fighters || []).includes(meId);
-  const dealerJoinIds = isDealer
-    ? Object.entries(state.heroes)
-        .filter(
-          ([pid, h]) =>
-            !h.downed && !(state.clash?.fighters || []).includes(pid),
-        )
-        .map(([pid]) => pid)
-    : [];
-
   const canMove =
-    (state.phase === 'exploring' &&
-      state.explorationActionsLeft > 0 &&
-      (isDealer || meId === activeId)) ||
-    canJoinBoss ||
-    (isDealer && state.phase === 'clash' && state.clash?.isBoss && dealerJoinIds.length);
+    state.phase === 'exploring' &&
+    state.explorationActionsLeft > 0 &&
+    (isDealer || meId === activeId);
 
   const byKey = new Map(state.map.tiles.map((t) => [t.key, t]));
   const cells = [];
@@ -492,33 +511,21 @@ function renderMap(state, isDealer, meId) {
         })
         .join('');
 
-      let moverFrom = from;
-      let movable = false;
-      if (state.phase === 'exploring' && canMove && moverFrom) {
-        movable =
-          adjacentOrthogonal(moverFrom, tile) &&
-          tilesConnect(moverFrom, tile) &&
-          !barrierBetween(state, moverFrom, tile) &&
+      const movable = Boolean(
+        canMove &&
+          from &&
+          adjacentOrthogonal(from, tile) &&
+          tilesConnect(from, tile) &&
+          !barrierBetween(state, from, tile) &&
           !state.clash &&
-          !state.pending;
-      } else if (state.phase === 'clash' && state.clash?.isBoss && tile.key === state.clash.roomKey) {
-        if (canJoinBoss && myHero) {
-          const myTile = state.map.tiles.find((t) => t.key === myHero.roomKey);
-          movable =
-            myTile &&
-            adjacentOrthogonal(myTile, tile) &&
-            tilesConnect(myTile, tile) &&
-            !barrierBetween(state, myTile, tile);
-        } else if (isDealer && dealerJoinIds.length) {
-          // Dealer can click boss room to join the active puppetable hero nearest
-          movable = true;
-        }
-      }
+          !state.pending,
+      );
 
       let label = tile.faceUp ? shortRoomLabel(tile) : '???';
       if (tile.kind === 'stairs' && tile.faceUp) {
         label = tile.locked || !state.floor?.stairsUnlocked ? 'Stairs 🔒' : 'Stairs ✓';
       }
+      if (tile.kind === 'boss' && tile.faceUp && !tile.cleared) label = 'Boss ⚔';
       if (tile.lurkingMonster) label = `${label} 👹`;
       const jammed = (state.map.barriers || []).some(
         (b) => b.aKey === tile.key || b.bKey === tile.key,
@@ -589,7 +596,7 @@ function renderDealerTools(state) {
         <button type="button" id="btn-unlock-stairs" ${stairsOpen || state.phase === 'victory' ? 'disabled' : ''}>Unlock stairs (key / 5+ stunt)</button>
         <button class="primary" type="button" id="btn-end-floor" ${state.phase === 'victory' ? 'disabled' : ''}>End floor / victory</button>
       </div>
-      <p class="muted">Boss <strong>Resolve: Hero wins</strong> also unlocks stairs. Heroes then move onto the Stairway Down — or use <strong>End floor</strong> to wrap up.</p>
+      <p class="muted">The Boss never starts on its own — call <strong>Start Boss fight</strong> once the party has gathered. Winning it unlocks the stairs. Heroes then move onto the Stairway Down — or use <strong>End floor</strong> to wrap up.</p>
       <div class="field">
         <label for="dealer-note">Narrate / note</label>
         <input id="dealer-note" maxlength="120" placeholder="The cocoa smells suspicious…" />
@@ -771,21 +778,6 @@ function wireTable() {
       const activeId = state.turnOrder[state.activeHeroIndex];
       const isDealer = session.meta?.isHost;
       const meId = session.meta?.playerId;
-      // Boss join: prefer the clicking hero's own pawn if not already fighting
-      if (state.phase === 'clash' && state.clash?.isBoss) {
-        let joiner = meId;
-        if (isDealer) {
-          joiner =
-            Object.keys(state.heroes).find(
-              (pid) =>
-                !state.heroes[pid].downed &&
-                !(state.clash.fighters || []).includes(pid) &&
-                state.heroes[pid].roomKey !== state.clash.roomKey,
-            ) || meId;
-        }
-        room.dispatch({ type: 'move', x, y, playerId: joiner });
-        return;
-      }
       if (isDealer && activeId !== meId) {
         room.dispatch({ type: 'move', x, y, playerId: activeId });
       } else {
@@ -802,8 +794,10 @@ function wireTable() {
       room.dispatch({ type: 'end-turn' });
     }
   });
-  wireClashModal(room, session);
   wireTableLogHovers();
+  document.getElementById('btn-boss-start')?.addEventListener('click', () => {
+    room.dispatch({ type: 'start-boss-clash' });
+  });
   document.getElementById('btn-dealer-log')?.addEventListener('click', () => {
     const message = document.getElementById('dealer-note')?.value?.trim();
     if (message) room.dispatch({ type: 'dealer-log', message });
