@@ -5,7 +5,7 @@ import {
   startExploringFloor,
   ensureHeroInKind,
 } from './helpers.js';
-import { publicStateFor, adjacentOrthogonal, tilesConnect } from '../src/game/state.js';
+import { publicStateFor, adjacentOrthogonal, tilesConnect, gearRuntimeFromId } from '../src/game/state.js';
 import { HEROES, GEAR, EVENTS } from '../src/data/index.js';
 import { renderTable, resolveFocusedHeroId } from '../src/ui/tableView.js';
 
@@ -290,5 +290,94 @@ describe('click-to-carry downed hero UI', () => {
     });
     expect(html).toContain('table-downed-note');
     expect(html).toContain('DOWNED');
+  });
+});
+
+describe('right-side hero abilities & belt items panel and Pip half-move UI', () => {
+  it('renders full hero ability and dedicated belt items zone with inline Revive and Drink buttons', () => {
+    const { state } = twoHeroState();
+    const s = structuredClone(state);
+    s.heroes.h1.hp = 6;
+    s.heroes.h1.belt = [gearRuntimeFromId('G-25'), gearRuntimeFromId('G-27')];
+    s.heroes.h2.downed = true;
+    s.heroes.h2.hp = 0;
+    s.explorationActionsLeft = 1;
+
+    const html = renderTable(publicStateFor(s, 'h1'), {
+      isDealer: false,
+      meId: 'h1',
+      roomCode: 'ROOM',
+      role: 'hero',
+      status: 'Ready.',
+      error: '',
+    });
+
+    expect(html).toContain('table-ability-box');
+    expect(html).toContain(HEROES[0].perk.text);
+    expect(html).toContain('table-belt-zone');
+    expect(html).toContain('Wakey-Wakey Smelling Salts');
+    expect(html).toContain('Strawberry Fizz Potion');
+    expect(html).toContain('data-use-belt="0"');
+    expect(html).toContain('data-belt-target="h2"');
+    expect(html).toContain('data-use-belt="1"');
+
+    // Even at 0 actions left, free Fizz Potion Drink button stays usable
+    s.explorationActionsLeft = 0;
+    const zeroHtml = renderTable(publicStateFor(s, 'h1'), {
+      isDealer: false,
+      meId: 'h1',
+      roomCode: 'ROOM',
+      role: 'hero',
+      status: 'Ready.',
+      error: '',
+    });
+    expect(zeroHtml).toContain('data-use-belt="1"');
+  });
+
+  it('shows 0/2 empty belt message when hero carries no belt items', () => {
+    const { state } = twoHeroState();
+    const html = renderTable(publicStateFor(state, 'h1'), {
+      isDealer: false,
+      meId: 'h1',
+      roomCode: 'ROOM',
+      role: 'hero',
+      status: 'Ready.',
+      error: '',
+    });
+    expect(html).toContain('table-belt-zone');
+    expect(html).toContain('0/2');
+  });
+
+  it('Pip Squeak with 0.5 actions left only highlights face-up cleared safe rooms as clickable', () => {
+    const dealerId = 'dealer-1';
+    let state = createEmptyState('ROOM', dealerId, 'Dealer');
+    state.players.push({ id: 'h1', name: 'Pip', role: 'hero', heroId: 'H-03', connected: true });
+    state = applyAction(state, { type: 'pick-hero', playerId: 'h1', heroId: 'H-03' }, 'h1').state;
+    state = applyAction(state, { type: 'start-floor', layoutMode: 'fixed' }, dealerId).state;
+
+    const center = state.map.tiles.find((t) => t.x === 1 && t.y === 1);
+    const neighbors = state.map.tiles.filter(
+      (t) => t.key !== center.key && adjacentOrthogonal(center, t) && tilesConnect(center, t),
+    );
+    const clearedNeighbor = neighbors[0];
+    const hiddenNeighbor = neighbors[1];
+    clearedNeighbor.faceUp = true;
+    clearedNeighbor.cleared = true;
+    clearedNeighbor.kind = 'vault';
+    hiddenNeighbor.faceUp = false;
+    hiddenNeighbor.cleared = false;
+    state.heroes.h1.roomKey = center.key;
+    state.explorationActionsLeft = 0.5;
+
+    const html = renderTable(publicStateFor(state, 'h1'), {
+      isDealer: false,
+      meId: 'h1',
+      roomCode: 'ROOM',
+      role: 'hero',
+      status: 'Ready.',
+      error: '',
+    });
+    expect(html).toContain(`data-move-x="${clearedNeighbor.x}" data-move-y="${clearedNeighbor.y}"`);
+    expect(html).not.toContain(`data-move-x="${hiddenNeighbor.x}" data-move-y="${hiddenNeighbor.y}"`);
   });
 });

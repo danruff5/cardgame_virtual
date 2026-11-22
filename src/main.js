@@ -500,12 +500,19 @@ function wireTable() {
   });
   document.querySelectorAll('[data-use-belt]').forEach((btn) => {
     btn.addEventListener('click', () => {
+      const beltIndex = Number(btn.getAttribute('data-use-belt'));
+      const targetId = btn.getAttribute('data-belt-target');
+      const ownerId = btn.getAttribute('data-belt-owner');
+      const action = {
+        type: 'interact',
+        subtype: 'use-consumable',
+        beltIndex,
+      };
+      if (targetId) action.targetPlayerId = targetId;
       room.dispatch(
-        withPlayer({
-          type: 'interact',
-          subtype: 'use-consumable',
-          beltIndex: Number(btn.getAttribute('data-use-belt')),
-        }),
+        session.meta?.isHost && ownerId
+          ? { ...action, playerId: ownerId }
+          : withPlayer(action),
       );
     });
   });

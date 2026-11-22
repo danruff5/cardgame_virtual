@@ -247,3 +247,31 @@ describe('clash coachmark selectors', () => {
     expect(clashTour.steps[0].place).toBe('bottom');
   });
 });
+
+describe('clash modal items & twin knives UI', () => {
+  it('renders Drink Fizz Potion in clash actions when hero holds G-27/G-28', () => {
+    const s = sampleClashState();
+    s.heroes.p1.belt = [{ id: 'G-27', name: 'Strawberry Fizz Potion' }];
+    const html = renderClashModal(s, false, 'p1', {});
+    expect(html).toContain('data-clash-belt="0"');
+    expect(html).toContain('data-belt-mode="heal"');
+  });
+
+  it('restricts legal cards to twinRank and shows Done with Twin Knives button', () => {
+    const s = sampleClashState();
+    s.clash.twinRank = 3;
+    s.clash.activeSuit = 'brawn';
+    s.clash.activeRank = 3;
+    s.heroes.p1.hand = [
+      { id: 'c3', type: 'rank', suit: 'zip', rank: 3, name: 'zip 3' },
+      { id: 'cb', type: 'rank', suit: 'brawn', rank: 5, name: 'brawn 5' },
+    ];
+    const html = renderClashModal(s, false, 'p1', {});
+    expect(html).toContain('id="btn-clash-end-twin"');
+    expect(html).toMatch(/data-clash-card="c3"[^>]*>/);
+    const cbIdx = html.indexOf('data-clash-card="cb"');
+    expect(cbIdx).toBeGreaterThan(-1);
+    const cbBtn = html.slice(cbIdx - 80, cbIdx + 80);
+    expect(cbBtn).toContain('disabled');
+  });
+});
