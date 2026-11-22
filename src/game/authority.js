@@ -5,7 +5,6 @@ import {
   BOSSES,
   MONSTERS,
   bossHp,
-  STORIES,
   gearByTier,
 } from '../data/index.js';
 import {
@@ -127,7 +126,6 @@ export function applyAction(state, action, actorId) {
         next.bossId = next.bossId || pickRandomBoss();
         next.layoutMode = action.layoutMode === 'fixed' ? 'fixed' : 'random';
         next.decks = prepareFloorDecks();
-        next.storyStack = [];
         next.pending = null;
         // Deal 1 starting Twist to dealer (max 3)
         if (next.decks.twists.length) {
@@ -251,8 +249,8 @@ export function applyAction(state, action, actorId) {
             announceBossWaiting(next, playerName, { revealed: true });
           } else if (to.kind === 'trap') {
             beginEventPrompt(next, heroPid, to);
-          } else if (to.kind === 'story') {
-            beginStoryOrMerchant(next, heroPid, to);
+          } else if (to.kind === 'merchant') {
+            beginMerchantRoom(next, to);
           } else if (to.kind === 'stairs') {
             to.cleared = true;
             if (to.locked || !next.floor?.stairsUnlocked) {
@@ -533,12 +531,6 @@ export function applyAction(state, action, actorId) {
         break;
       }
 
-      case 'dealer-log': {
-        if (actor.role !== 'dealer') return fail(next, 'Dealer only');
-        appendLog(next, `Dealer: ${String(action.message || '').slice(0, 120)}`);
-        break;
-      }
-
       case 'interact': {
         if (next.phase !== 'exploring') return fail(next, 'Not exploring');
         if (next.pending) return fail(next, 'Resolve the pending prompt first');
@@ -705,21 +697,16 @@ export function applyAction(state, action, actorId) {
         }
 
         if (pending.kind === 'event') {
-          const choice = String(action.choice || 'a').toLowerCase();
+          const choice = String(action.choice || '').toLowerCase();
+          if (choice !== 'a' && choice !== 'b') {
+            return fail(next, 'Choose A or B');
+          }
           applyEventChoice(next, hero, pending.event, choice);
           const tile = next.map.tiles.find((t) => t.key === pending.tileKey);
           if (tile) {
             tile.cleared = true;
             tile.eventResolved = true;
           }
-          next.pending = null;
-          maybeEndExplore(next);
-          break;
-        }
-
-        if (pending.kind === 'story') {
-          const choice = String(action.choice || 'a').toLowerCase();
-          applyStoryChoice(next, hero, pending.story, choice, pending.tileKey);
           next.pending = null;
           maybeEndExplore(next);
           break;
@@ -843,7 +830,7 @@ export function applyAction(state, action, actorId) {
           }
           if (to.kind === 'boss') announceBossWaiting(next, hero.name, { revealed: true });
           else if (to.kind === 'trap') beginEventPrompt(next, heroPid, to);
-          else if (to.kind === 'story') beginStoryOrMerchant(next, heroPid, to);
+          else if (to.kind === 'merchant') beginMerchantRoom(next, to);
         } else {
           appendLog(next, `${hero.name} carries ${ally.name} to ${to.name} (2 Actions).`);
         }
@@ -1750,10 +1737,7 @@ function finishFloor(state, reason) {
     hero.hand = hero.hand.filter((c) => !isCramp(c));
   }
   appendLog(state, reason);
-  appendLog(
-    state,
-    `Floor 1 complete! Conscious Heroes heal +3 HP (checkpoint). Story stack for Floor 2: ${state.storyStack.length} callback(s).`,
-  );
+  appendLog(state, 'Floor 1 complete! Conscious Heroes heal +3 HP (checkpoint).');
 }
 
 function endHeroExplorationTurn(state) {
@@ -1808,8 +1792,8 @@ function beginEventPrompt(state, heroPlayerId, tile) {
     : {
         id: 'E-00',
         title: 'Mysterious Draft',
-        prompt: 'The room feels empty. Dealer narrates.',
-        choices: ['A) Shrug and move on.', 'B) Peek nervously.', 'Or Improvise...'],
+        prompt: 'A drafty room — pick a response.',
+        choices: ['A) Shrug and move on.', 'B) Peek nervously.'],
       };
   state.pending = {
     kind: 'event',
@@ -1817,45 +1801,23 @@ function beginEventPrompt(state, heroPlayerId, tile) {
     tileKey: tile.key,
     event,
   };
-  appendLog(state, `Event: ${event.title} — choose A, B, or improvise.`);
+  appendLog(state, `Event: ${event.title} — choose A or B.`);
 }
 
-function beginStoryOrMerchant(state, heroPlayerId, tile) {
-  // Part II callbacks are for Floor 2+; still honor a non-empty storyStack if present.
-  if (state.storyStack?.length) {
-    const callbackId = state.storyStack.shift();
-    const story = STORIES.find((s) => s.id === callbackId);
-    if (story) {
-      state.pending = { kind: 'story', heroPlayerId, tileKey: tile.key, story };
-      tile.cleared = true;
-      appendLog(state, `Story Callback: ${story.name}`);
-      return;
-    }
-  }
-  const card = state.decks.storyMerchant?.length ? state.decks.storyMerchant.shift() : null;
-  if (!card) {
-    tile.cleared = true;
-    appendLog(state, 'Story/Cart room — deck empty. Safe to linger.');
-    return;
-  }
-  if (card.cardKind === 'merchant') {
-    tile.merchant = { id: card.id, name: card.name, greeting: card.greeting, deals: card.deals };
-    tile.cleared = true;
-    appendLog(state, `${card.name} sets up shop here! ${card.greeting}`);
-    return;
-  }
+function beginMerchantRoom(state, tile) {
+  const card = state.decks.merchants?.length ? state.decks.merchants.shift() : null;
   tile.cleared = true;
-  state.pending = { kind: 'story', heroPlayerId, tileKey: tile.key, story: card };
-  appendLog(state, `Story: ${card.name}`);
+  if (!card) {
+    appendLog(state, 'Merchant Cart room — no merchants left in deck.');
+    return;
+  }
+  tile.merchant = { id: card.id, name: card.name, greeting: card.greeting, deals: card.deals };
+  appendLog(state, `${card.name} sets up shop here!`);
 }
 
 function applyEventChoice(state, hero, event, choice) {
   const id = event.id;
   appendLog(state, `${hero.name} picks ${choice.toUpperCase()} on ${event.title}.`);
-  if (choice === 'improvise' || choice === 'c') {
-    drawTwist(state, 'Improvise — Dealer Twist');
-    return;
-  }
   // Structured outcomes from dungeon_floor1_2d5d.md (simplified digital adjudication)
   const bootsIgnore = hero.armor?.id === 'G-18';
   if (id === 'E-01') {
@@ -1909,68 +1871,6 @@ function applyEventChoice(state, hero, event, choice) {
     hero.hp = 0;
     hero.downed = true;
     appendLog(state, `${hero.name} collapses from the hazard!`);
-  }
-}
-
-function applyStoryChoice(state, hero, story, choice, tileKey) {
-  appendLog(state, `${hero.name} responds to ${story.name} (${choice.toUpperCase()}).`);
-  const tile = state.map.tiles.find((t) => t.key === tileKey);
-  if (tile) tile.storyResolved = true;
-
-  if (story.id === 'S-01A') {
-    if (choice === 'a') {
-      // Help Pip: give Weapon or Armor → draw 1 replacement Tier 0 starter
-      if (hero.weapon) {
-        appendLog(state, `${hero.name} gives ${hero.weapon.name} to Pip.`);
-        hero.weapon = null;
-        const starters = gearByTier(0).filter((g) => g.slot === 'weapon');
-        if (starters.length) {
-          const pick = starters[Math.floor(Math.random() * starters.length)];
-          grantLootToHero(state, hero, { gearId: pick.id, name: pick.name, slot: pick.slot });
-          appendLog(state, `Pip gifts a replacement starter: ${pick.name}.`);
-        }
-      } else if (hero.armor) {
-        appendLog(state, `${hero.name} gives ${hero.armor.name} to Pip.`);
-        hero.armor = null;
-        const starters = gearByTier(0).filter((g) => g.slot === 'armor');
-        if (starters.length) {
-          const pick = starters[Math.floor(Math.random() * starters.length)];
-          grantLootToHero(state, hero, { gearId: pick.id, name: pick.name, slot: pick.slot });
-          appendLog(state, `Pip gifts a replacement starter: ${pick.name}.`);
-        }
-      }
-      if (story.callbackId) state.storyStack.push(story.callbackId);
-      appendLog(state, `Tucked ${story.callbackId} onto the Next-Floor Story Stack (Helped).`);
-    } else if (choice === 'b') {
-      const item = drawLoot(state, 1)[0];
-      if (item) grantLootToHero(state, hero, item);
-      if (story.callbackId) state.storyStack.push(story.callbackId);
-      appendLog(state, `Tucked ${story.callbackId} (Grumpy!).`);
-    } else drawTwist(state, 'Story improvise');
-  } else if (story.id === 'S-02A') {
-    if (choice === 'a') {
-      if (hero.belt?.length) hero.belt.pop();
-      if (story.callbackId) state.storyStack.push(story.callbackId);
-      appendLog(state, `Tucked ${story.callbackId} onto the Story Stack.`);
-    } else if (choice === 'b') drawAction(state, hero);
-    else drawTwist(state, 'Story improvise');
-  } else if (story.id === 'S-03A') {
-    if (choice === 'a') {
-      if (hero.belt?.length) hero.belt.pop();
-      else {
-        // discard 2 matching suit proxy: discard 2 action cards
-        hero.hand = hero.hand.filter((c, i) => i >= 2 || isCramp(c));
-      }
-      if (story.callbackId) state.storyStack.push(story.callbackId);
-      appendLog(state, `Tucked ${story.callbackId} (Friend).`);
-    } else if (choice === 'b') {
-      drawAction(state, hero);
-      if (story.callbackId) state.storyStack.push(story.callbackId);
-      appendLog(state, `Tucked ${story.callbackId} (Snubbed).`);
-    } else drawTwist(state, 'Story improvise');
-  } else {
-    // Part II or unknown — narrate only on Floor 1
-    appendLog(state, story.scene || story.name);
   }
 }
 
@@ -2161,7 +2061,7 @@ function applyStuntSuccess(state, hero, heroPid, action = {}) {
     drawAction(state, hero);
     appendLog(state, `${hero.name} stunt finds a loose brick — draws 1 Action.`);
   } else {
-    appendLog(state, `${hero.name} pulls off the stunt! (Dealer narrates the clever edge.)`);
+    appendLog(state, `${hero.name} pulls off the stunt and draws 1 Action card.`);
     drawAction(state, hero);
   }
 }

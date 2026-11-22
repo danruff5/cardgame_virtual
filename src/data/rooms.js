@@ -17,8 +17,8 @@ export const ROOMS = [
   { id: 'R-14', name: 'Sparkly Treasure Closet (Loot Vault)', kind: 'vault', copies: 1, doorways: ['N', 'E', 'S', 'W'], rule: 'Spend 1 Action: draw 2 Loot, keep 1, discard 1 (then mark empty).', flavor: 'Somebody hid good stuff behind the extra mop buckets!' },
   { id: 'R-15', name: 'Silly Trap / Surprise Room', kind: 'trap', copies: 1, doorways: ['N', 'E', 'S', 'W'], rule: 'Flip: draw 1 Trap / Curious Event; resolve choices or Stunt.', flavor: 'Suspiciously clean floor. Too clean...' },
   { id: 'R-16', name: 'Silly Trap / Surprise Room', kind: 'trap', copies: 1, doorways: ['N', 'E', 'S', 'W'], rule: 'Flip: draw 1 Trap / Curious Event; resolve choices or Stunt.', flavor: 'Suspiciously clean floor. Too clean...' },
-  { id: 'R-17', name: 'Story / Traveling Cart Room', kind: 'story', copies: 1, doorways: ['N', 'E', 'S', 'W'], rule: 'Flip: play Part II Callback if stacked, else draw Story or Merchant.', flavor: 'Wait—how did a wooden wagon fit down the stairs?!' },
-  { id: 'R-18', name: 'Story / Traveling Cart Room', kind: 'story', copies: 1, doorways: ['N', 'E', 'S', 'W'], rule: 'Flip: play Part II Callback if stacked, else draw Story or Merchant.', flavor: 'Wait—how did a wooden wagon fit down the stairs?!' },
+  { id: 'R-17', name: 'Merchant Cart Room', kind: 'merchant', copies: 1, doorways: ['N', 'E', 'S', 'W'], rule: 'Flip: a Traveling Merchant sets up shop here so any Hero can trade gear.', flavor: 'Wait—how did a wooden wagon fit down the stairs?!' },
+  { id: 'R-18', name: 'Merchant Cart Room', kind: 'merchant', copies: 1, doorways: ['N', 'E', 'S', 'W'], rule: 'Flip: a Traveling Merchant sets up shop here so any Hero can trade gear.', flavor: 'Wait—how did a wooden wagon fit down the stairs?!' },
   { id: 'R-19', name: 'Echoing Hallway', kind: 'hallway', copies: 1, doorways: ['N', 'E', 'S', 'W'], rule: 'Safe junction. Optional 1 Action: 4+ Spark/Zip Stunt for +1 Action card (once).', flavor: 'ECHO! (echo... echo...)' },
   { id: 'R-20', name: 'Echoing Hallway', kind: 'hallway', copies: 1, doorways: ['N', 'E', 'S', 'W'], rule: 'Safe junction. Optional 1 Action: 4+ Spark/Zip Stunt for +1 Action card (once).', flavor: 'ECHO! (echo... echo...)' },
 ];
@@ -31,7 +31,7 @@ export const DEFAULT_FLOOR_RECIPE_IDS = [
   'R-10', // Boss Stage
   'R-11', 'R-12', 'R-13', // 3 Vaults
   'R-15', 'R-16', // 2 Trap
-  'R-17', // 1 Story/Cart
+  'R-17', // 1 Merchant Cart
   'R-03', // Sanctuary
 ];
 

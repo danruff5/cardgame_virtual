@@ -127,7 +127,7 @@ export const COACH_TOURS = [
         id: 'tools',
         selector: '[data-coach="dealer-tools"]',
         title: 'Dealer toolkit',
-        body: 'Narrate the log, draw Twists, unlock stairs, or end the floor when the crawl wraps.',
+        body: 'Draw Twists, unlock stairs, or end the floor when the crawl wraps.',
         place: 'left',
       },
       {

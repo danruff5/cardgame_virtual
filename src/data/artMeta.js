@@ -71,7 +71,7 @@ export const ROOM_ART = {
   boss: 'art_room_boss.png',
   vault: 'art_room_vault.png',
   trap: 'art_room_trap.png',
-  story: 'art_room_story.png',
+  merchant: 'art_room_story.png',
   hallway: 'art_room_hall.png',
 };
 

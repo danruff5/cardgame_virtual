@@ -15,7 +15,7 @@ export {
   roomsForRecipe,
 } from './rooms.js';
 export { MONSTERS, BOSSES, bossHp } from './monsters.js';
-export { EVENTS, MERCHANTS, STORIES } from './events.js';
+export { EVENTS, MERCHANTS } from './events.js';
 export { THEMES, TWISTS } from './themes.js';
 
 import { HEROES } from './heroes.js';
@@ -24,7 +24,7 @@ import { buildActionDeckCatalog, buildCrampDeck } from './actionDeck.js';
 import { DESPERATION } from './desperation.js';
 import { ROOMS, DEFAULT_FLOOR_RECIPE_IDS } from './rooms.js';
 import { MONSTERS, BOSSES } from './monsters.js';
-import { EVENTS, MERCHANTS, STORIES } from './events.js';
+import { EVENTS, MERCHANTS } from './events.js';
 import { THEMES, TWISTS } from './themes.js';
 
 /** Sanity counts matching design docs (for README / debug panel). */
@@ -41,7 +41,6 @@ export function dataInventory() {
     bosses: BOSSES.length,
     events: EVENTS.length,
     merchants: MERCHANTS.length,
-    stories: STORIES.length,
     themes: THEMES.length,
     twists: TWISTS.length,
   };

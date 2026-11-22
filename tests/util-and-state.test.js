@@ -32,6 +32,7 @@ describe('publicStateFor privacy', () => {
     state.heroes.h1.hand = [{ id: 'c1', type: 'rank', suit: 'brawn', rank: 3 }];
     state.heroes.h2.hand = [{ id: 'c2', type: 'rank', suit: 'zip', rank: 5 }];
     state.decks.action = [{ id: 'a1' }, { id: 'a2' }];
+    state.decks.merchants = [{ id: 'M-01' }];
 
     const view = publicStateFor(state, 'h1');
     expect(view.heroes.h1.hand[0].suit).toBe('brawn');
@@ -39,6 +40,9 @@ describe('publicStateFor privacy', () => {
     expect(view.heroes.h2.hand[0].suit).toBeUndefined();
     expect(view.decks.actionCount).toBe(2);
     expect(view.decks.action).toBeUndefined();
+    expect(view.decks.merchantsCount).toBe(1);
+    expect(view.decks.storyMerchantCount).toBeUndefined();
+    expect(view.storyStack).toBeUndefined();
   });
 
   it('gives dealer full decks', () => {
@@ -61,5 +65,7 @@ describe('data inventory vs design counts', () => {
     expect(inv.monsters).toBeGreaterThanOrEqual(8);
     expect(inv.bosses).toBeGreaterThanOrEqual(2);
     expect(inv.events).toBe(6);
+    expect(inv.merchants).toBe(2);
+    expect(inv.stories).toBeUndefined();
   });
 });

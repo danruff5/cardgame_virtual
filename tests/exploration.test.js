@@ -6,6 +6,7 @@ import {
   placeHeroOn,
 } from './helpers.js';
 import { tilesConnect } from '../src/game/mapLayout.js';
+import { MERCHANTS } from '../src/data/index.js';
 
 describe('start-floor bootstrap', () => {
   it('deals 4 action cards, 2 exploration actions, and places heroes on entrance', () => {
@@ -323,5 +324,68 @@ describe('end-turn hands off exploration', () => {
     const r = applyAction(state, { type: 'end-turn', playerId: heroPlayerId }, dealerId);
     expect(r.ok).toBe(true);
     expect(r.state.explorationActionsLeft).toBe(2);
+  });
+});
+
+describe('mechanics-only narrative cleanup', () => {
+  it('revealing a merchant tile (R-17) spawns a Merchant immediately without story pending', () => {
+    const { state: base, heroPlayerId, dealerId } = startExploringFloor({ layoutMode: 'fixed' });
+    const merchantTile = base.map.tiles.find((t) => t.roomId === 'R-17');
+    expect(merchantTile).toBeTruthy();
+    expect(merchantTile.kind).toBe('merchant');
+    const adj = base.map.tiles.find(
+      (t) => t.key !== merchantTile.key && tilesConnect(merchantTile, t),
+    );
+    const state = placeHeroOn(base, heroPlayerId, adj.key);
+    const target = state.map.tiles.find((t) => t.key === merchantTile.key);
+    target.faceUp = false;
+    target.cleared = false;
+    target.merchant = null;
+    state.explorationActionsLeft = 2;
+
+    const r = applyAction(
+      state,
+      { type: 'move', x: merchantTile.x, y: merchantTile.y, playerId: heroPlayerId },
+      dealerId,
+    );
+    expect(r.ok).toBe(true);
+    const revealed = r.state.map.tiles.find((t) => t.key === merchantTile.key);
+    expect(revealed.faceUp).toBe(true);
+    expect(revealed.cleared).toBe(true);
+    expect(revealed.merchant).toBeTruthy();
+    expect(MERCHANTS.some((m) => m.id === revealed.merchant.id)).toBe(true);
+    expect(r.state.pending).toBeNull();
+  });
+
+  it('rejects removed dealer-log action', () => {
+    const { state, dealerId } = startExploringFloor({ layoutMode: 'fixed' });
+    const r = applyAction(state, { type: 'dealer-log', message: 'hi' }, dealerId);
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects improvise choice on pending events (only A or B accepted)', () => {
+    const { state: base, heroPlayerId, dealerId } = startExploringFloor({ layoutMode: 'fixed' });
+    const trap = base.map.tiles.find((t) => t.kind === 'trap');
+    const adj = base.map.tiles.find((t) => t.key !== trap.key && tilesConnect(trap, t));
+    const state = placeHeroOn(base, heroPlayerId, adj.key);
+    const t = state.map.tiles.find((tile) => tile.key === trap.key);
+    t.faceUp = false;
+    t.cleared = false;
+    state.explorationActionsLeft = 2;
+
+    const moved = applyAction(
+      state,
+      { type: 'move', x: trap.x, y: trap.y, playerId: heroPlayerId },
+      dealerId,
+    );
+    expect(moved.ok).toBe(true);
+    expect(moved.state.pending?.kind).toBe('event');
+
+    const bad = applyAction(
+      moved.state,
+      { type: 'resolve-pending', choice: 'improvise' },
+      dealerId,
+    );
+    expect(bad.ok).toBe(false);
   });
 });
