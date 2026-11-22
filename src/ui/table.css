@@ -20,11 +20,11 @@ body.table-active {
   --left-w: clamp(230px, 19.5vw, 310px);
   --right-w: clamp(310px, 25.5vw, 420px);
   --table-chrome-h: 138px;
-  --seat-card-h: clamp(104px, 17vh, 168px);
+  --seat-card-h: clamp(92px, 14.5vh, 144px);
   --seat-card-w: calc(var(--seat-card-h) * 0.72);
-  --hand-card-h: clamp(112px, 19vh, 176px);
+  --hand-card-h: clamp(100px, 17vh, 158px);
   --hand-card-w: calc(var(--hand-card-h) * 0.72);
-  --mini-gear-h: clamp(66px, 9.5vh, 92px);
+  --mini-gear-h: clamp(54px, 7.8vh, 76px);
   --mini-gear-w: calc(var(--mini-gear-h) * 0.72);
 }
 
@@ -923,8 +923,8 @@ button.party-card.is-downed {
   overflow: visible;
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
-  padding: 0.55rem 0.6rem;
+  gap: 0.42rem;
+  padding: 0.48rem 0.55rem;
   border-radius: 12px;
   border: 1px solid rgba(243, 230, 208, 0.12);
   background: rgba(0, 0, 0, 0.28);
@@ -1056,11 +1056,157 @@ button.party-card.is-downed {
   white-space: nowrap;
 }
 
+.table-ability-box {
+  display: grid;
+  gap: 0.16rem;
+  padding: 0.34rem 0.48rem;
+  border-radius: 9px;
+  border: 1px solid rgba(243, 230, 208, 0.14);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.table-ability-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.table-ability-name {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #ffe4a3;
+}
+
+.table-ability-badge {
+  font-size: 0.64rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(243, 230, 208, 0.22);
+  white-space: nowrap;
+}
+
+.table-ability-badge.is-ready {
+  border-color: rgba(111, 158, 122, 0.65);
+  background: rgba(111, 158, 122, 0.2);
+  color: #bde6c7;
+}
+
+.table-ability-badge.is-passive {
+  border-color: rgba(120, 175, 226, 0.55);
+  background: rgba(65, 118, 173, 0.2);
+  color: #cbe4ff;
+}
+
+.table-ability-badge.is-used {
+  border-color: rgba(243, 230, 208, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+}
+
+.table-ability-text {
+  margin: 0;
+  font-size: 0.71rem;
+  line-height: 1.28;
+  color: rgba(243, 230, 208, 0.86);
+}
+
+.table-belt-zone {
+  display: grid;
+  gap: 0.24rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid rgba(243, 230, 208, 0.1);
+}
+
+.belt-item-list {
+  display: grid;
+  gap: 0.24rem;
+}
+
+.belt-item-row {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.24rem 0.4rem;
+  border-radius: 8px;
+  border: 1px solid rgba(243, 230, 208, 0.14);
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.belt-item-row:hover {
+  z-index: 65;
+  border-color: rgba(255, 228, 163, 0.38);
+}
+
+.belt-item-row:hover > .card-hover-tip {
+  display: block;
+  left: auto;
+  right: 0;
+  bottom: calc(100% + 6px);
+  transform: none;
+}
+
+.belt-item-info {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.belt-item-icon {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.belt-item-name {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #f3e6d0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.belt-item-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  flex: 0 0 auto;
+}
+
+button.belt-use-btn {
+  padding: 0.15rem 0.45rem;
+  font-size: 0.7rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+button.belt-use-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.belt-status-chip {
+  font-size: 0.66rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.belt-empty {
+  font-size: 0.72rem;
+}
+
 .table-hand-zone {
   margin-top: auto;
   display: grid;
-  gap: 0.3rem;
-  padding-top: 0.45rem;
+  gap: 0.22rem;
+  padding-top: 0.35rem;
   border-top: 1px solid rgba(243, 230, 208, 0.1);
 }
 
