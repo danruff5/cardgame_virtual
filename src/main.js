@@ -2,25 +2,19 @@ import './style.css';
 import './ui/cards.css';
 import './ui/coachmarks.css';
 import './ui/clash.css';
+import './ui/table.css';
 import { PeerRoom, readRoomFromUrl, buildJoinUrl } from './net/peerRoom.js';
 import { dataInventory, HEROES, THEMES, BOSSES, SUITS } from './data/index.js';
-import { adjacentOrthogonal, tilesConnect } from './game/state.js';
-import { bossGather } from './game/boss.js';
-import {
-  renderActionCard,
-  renderHeroCard,
-  renderGearChip,
-  renderRoomTile,
-  renderMonsterCard,
-} from './ui/cardView.js';
-import { ASSET, SUIT_META } from './data/artMeta.js';
+import { renderHeroCard } from './ui/cardView.js';
+import { ASSET } from './data/artMeta.js';
 import {
   bindCoachMenu,
   renderCoachUi,
   setCoachChangeHandler,
   syncCoachAfterRender,
 } from './ui/coachmarks.js';
-import { syncClashModal, wireTableLogHovers, formatCombatLogLine } from './ui/clashModal.js';
+import { syncClashModal, wireTableLogHovers } from './ui/clashModal.js';
+import { renderTable } from './ui/tableView.js';
 
 document.documentElement.style.setProperty(
   '--bg-art',
@@ -38,6 +32,8 @@ const session = {
   name: localStorage.getItem('cbc-name') || '',
   joining: false,
   coachMenuOpen: false,
+  inspectedHeroId: null,
+  lastActiveHeroId: null,
 };
 
 function coachContext() {
@@ -95,14 +91,33 @@ const pendingRoom = readRoomFromUrl();
 render();
 
 function render() {
+  const isTable = Boolean(session.state && session.state.phase !== 'lobby');
+  document.body.classList.toggle('table-active', isTable);
   if (!session.state) {
+    session.inspectedHeroId = null;
+    session.lastActiveHeroId = null;
     app.innerHTML = renderLobbyShell();
     wireLobby();
   } else if (session.state.phase === 'lobby') {
+    session.inspectedHeroId = null;
+    session.lastActiveHeroId = null;
     app.innerHTML = renderLobbyGame();
     wireLobbyGame();
   } else {
-    app.innerHTML = renderTable();
+    const activeId = session.state.turnOrder?.[session.state.activeHeroIndex] || null;
+    if (session.meta?.isHost && activeId !== session.lastActiveHeroId) {
+      session.inspectedHeroId = null;
+    }
+    session.lastActiveHeroId = activeId;
+    app.innerHTML = renderTable(session.state, {
+      isDealer: Boolean(session.meta?.isHost),
+      meId: session.meta?.playerId,
+      roomCode: session.meta?.roomCode || session.state.roomCode,
+      role: session.meta?.role || '—',
+      status: session.status,
+      error: session.error,
+      inspectedHeroId: session.inspectedHeroId,
+    });
     wireTable();
   }
   syncClashModal({
@@ -377,382 +392,13 @@ function wireLobbyGame() {
   });
 }
 
-function renderTable() {
-  const state = session.state;
-  const isDealer = session.meta?.isHost;
-  const meId = session.meta?.playerId;
-  const activeId = state.turnOrder[state.activeHeroIndex];
-  const activePlayer = state.players.find((p) => p.id === activeId);
-  const theme = THEMES.find((t) => t.id === state.themeId);
-  const boss = BOSSES.find((b) => b.id === state.bossId);
-
-  return `
-    ${brand()}
-    ${statusBar()}
-    <div class="game-layout ${state.phase === 'clash' ? 'clash-dimmed' : ''}">
-      <section class="panel stack">
-        <div class="row" style="justify-content:space-between">
-          <div>
-            <h2>Floor 1 map</h2>
-            <p class="muted" style="margin:0">${escapeHtml(theme?.name || 'Theme')} · Boss: ${escapeHtml(boss?.name || '?')} · Phase: <strong>${escapeHtml(state.phase)}</strong></p>
-          </div>
-          <div class="row">
-            <span class="pill">Stairs: <strong>${state.floor?.stairsUnlocked ? 'UNLOCKED' : 'locked'}</strong></span>
-            ${state.phase !== 'victory' ? `<span class="pill" data-coach="actions-left">Actions left: <strong>${state.explorationActionsLeft}</strong></span>` : ''}
-          </div>
-        </div>
-        ${
-          state.phase === 'victory'
-            ? `<div class="panel" style="box-shadow:none;border-color:rgba(111,158,122,0.55)">
-                <h3>Floor 1 complete!</h3>
-                <p>The Spiral Slide is open. Celebrate the ~30-minute checkpoint, or prep Floor 2 later.</p>
-              </div>`
-            : `<p>Active: <strong>${escapeHtml(activePlayer?.name || '—')}</strong>${state.phase === 'clash' ? ' · in clash!' : ''}${
-                state.floor?.stairsUnlocked
-                  ? ' · Move onto the <strong>Stairway Down</strong> to finish.'
-                  : ''
-              }</p>`
-        }
-        ${renderBossGather(state, isDealer, meId)}
-        ${renderMap(state, isDealer, meId)}
-        ${renderPending(state, isDealer, meId)}
-        ${renderRoomActions(state, isDealer, meId)}
-        <div class="row">
-          ${
-            (isDealer || meId === activeId) && state.phase === 'exploring' && !state.pending
-              ? `<button type="button" id="btn-end-turn">End turn</button>`
-              : ''
-          }
-        </div>
-      </section>
-      <section class="panel stack" data-coach="side-panel">
-        <h2>${isDealer ? 'Dealer tools' : 'Your hero'}</h2>
-        ${isDealer ? renderDealerTools(state) : ''}
-        ${renderHeroPanels(state, meId, isDealer)}
-        <h3>Log</h3>
-        <div class="log">${state.log.map((l) => `<div>${formatCombatLogLine(l)}</div>`).join('')}</div>
-      </section>
-    </div>
-  `;
-}
-
-/**
- * Boss Chamber found but not fought yet: the boss waits while the party gathers.
- * The dealer, or any hero standing in the chamber, calls the fight when ready.
- */
-function renderBossGather(state, isDealer, meId) {
-  const gather = bossGather(state);
-  if (!gather.waiting) return '';
-  const names = gather.heroIds.map((pid) => state.heroes[pid]?.name || pid);
-  const inside = gather.heroIds.includes(meId);
-  const canStart = !state.pending && gather.heroIds.length > 0 && (isDealer || inside);
-  const count = gather.heroIds.length;
-  let hint = '';
-  if (!count) {
-    hint = 'Nobody is in the chamber yet — walk a Hero in to be able to start.';
-  } else if (!isDealer && !inside) {
-    hint = 'Move into the Boss Chamber to fight from the start, or pile in later from the room next door.';
-  } else if (state.pending) {
-    hint = 'Resolve the room prompt first.';
-  }
-  return `
-    <div class="panel boss-gather" data-coach="boss-gather">
-      <div class="boss-gather-card">${renderMonsterCard(gather.boss.id, { size: 'hand', isBoss: true })}</div>
-      <div class="stack">
-        <div>
-          <h3>${escapeHtml(gather.boss.name)} is waiting</h3>
-          <p class="muted" style="margin:0">The Boss won't fight until someone calls it. Keep exploring, grab loot, and gather in the Boss Chamber first.</p>
-        </div>
-        <p style="margin:0">
-          In the chamber: <strong>${count ? escapeHtml(names.join(', ')) : 'no one yet'}</strong>
-          <span class="muted"> · Boss starts at ${gather.projectedHp} HP (+3 per extra Hero)</span>
-        </p>
-        <div class="row">
-          <button class="primary" type="button" id="btn-boss-start" ${canStart ? '' : 'disabled'}>
-            Start Boss fight${count ? ` (${count} Hero${count === 1 ? '' : 'es'})` : ''}
-          </button>
-          ${hint ? `<span class="muted">${escapeHtml(hint)}</span>` : ''}
-        </div>
-      </div>
-    </div>`;
-}
-
-function barrierBetween(state, a, b) {
-  return (state.map.barriers || []).some(
-    (bar) =>
-      (bar.aKey === a.key && bar.bKey === b.key) ||
-      (bar.aKey === b.key && bar.bKey === a.key),
-  );
-}
-
-function renderMap(state, isDealer, meId) {
-  const activeId = state.turnOrder[state.activeHeroIndex];
-  const activeHero = state.heroes[activeId];
-  const from = state.map.tiles.find((t) => t.key === activeHero?.roomKey);
-  const canMove =
-    state.phase === 'exploring' &&
-    state.explorationActionsLeft > 0 &&
-    (isDealer || meId === activeId);
-
-  const byKey = new Map(state.map.tiles.map((t) => [t.key, t]));
-  const cells = [];
-  for (let y = 0; y < state.map.height; y += 1) {
-    for (let x = 0; x < state.map.width; x += 1) {
-      const tile = byKey.get(`t-${x}-${y}`);
-      if (!tile) {
-        cells.push(`<div class="map-cell" style="visibility:hidden"></div>`);
-        continue;
-      }
-      const pawns = Object.entries(state.heroes)
-        .filter(([, h]) => h.roomKey === tile.key)
-        .map(([pid], i) => {
-          const color = SUITS[state.heroes[pid].preferredSuit]?.color || '#ccc';
-          return `<span class="pawn" style="left:${6 + i * 14}px;background:${color}" title="${escapeAttr(state.players.find((p) => p.id === pid)?.name || '')}"></span>`;
-        })
-        .join('');
-
-      const movable = Boolean(
-        canMove &&
-          from &&
-          adjacentOrthogonal(from, tile) &&
-          tilesConnect(from, tile) &&
-          !barrierBetween(state, from, tile) &&
-          !state.clash &&
-          !state.pending,
-      );
-
-      let label = tile.faceUp ? shortRoomLabel(tile) : '???';
-      if (tile.kind === 'stairs' && tile.faceUp) {
-        label = tile.locked || !state.floor?.stairsUnlocked ? 'Stairs 🔒' : 'Stairs ✓';
-      }
-      if (tile.kind === 'boss' && tile.faceUp && !tile.cleared) label = 'Boss ⚔';
-      if (tile.lurkingMonster) label = `${label} 👹`;
-      const jammed = (state.map.barriers || []).some(
-        (b) => b.aKey === tile.key || b.bKey === tile.key,
-      );
-      if (jammed && tile.faceUp) label = `${label} 🚪`;
-      const stairsClass =
-        tile.kind === 'stairs' && tile.faceUp
-          ? state.floor?.stairsUnlocked && !tile.locked
-            ? 'stairs-open'
-            : 'stairs-locked'
-          : '';
-      cells.push(`
-        <button type="button" class="map-cell with-art ${tile.faceUp ? 'face-up' : 'face-down'} ${tile.kind} ${stairsClass} ${movable ? 'clickable' : ''}"
-          ${movable ? `data-move-x="${tile.x}" data-move-y="${tile.y}"` : 'disabled'}
-          title="${escapeAttr(
-            tile.faceUp
-              ? tile.kind === 'stairs'
-                ? state.floor?.stairsUnlocked
-                  ? 'Unlocked — step here to finish the floor'
-                  : 'Locked until Floor Boss is defeated (or Dealer unlocks)'
-                : tile.lurkingMonster
-                  ? `Lurking: ${tile.lurkingMonster.name}`
-                  : tile.rule || tile.name
-              : 'Face-down room',
-          )}">
-          ${renderRoomTile(tile, { size: 'mini', stairsUnlocked: state.floor?.stairsUnlocked })}
-          <span class="map-label">${escapeHtml(label)}</span>
-          ${pawns}
-        </button>`);
-    }
-  }
-  const jamNote =
-    (state.map.barriers || []).length > 0
-      ? `<p class="muted">Sticky Door Jam active (${state.map.barriers.length}) — pry with a Brawn 3+ Stunt.</p>`
-      : '';
-  return `${jamNote}<div class="map-grid" data-coach="map" style="grid-template-columns:repeat(${state.map.width}, auto)">${cells.join('')}</div>`;
-}
-
-function shortRoomLabel(tile) {
-  const map = {
-    entrance: 'Entrance',
-    stairs: 'Stairs',
-    shrine: 'Shrine',
-    monster: 'Lair',
-    boss: 'Boss',
-    vault: 'Vault',
-    trap: 'Trap',
-    merchant: 'Merchant',
-    hallway: 'Hall',
-  };
-  return map[tile.kind] || tile.name;
-}
-
-function renderDealerTools(state) {
-  const stairsOpen = Boolean(state.floor?.stairsUnlocked);
-  return `
-    <div class="stack" data-coach="dealer-tools">
-      <p class="muted">You are the authority host. Local stub seats can be moved with the map (dealer puppets the active turn).</p>
-      <div class="inventory">
-        Decks — action ${state.decks.actionCount ?? '—'} · loot ${state.decks.lootCount ?? '—'} ·
-        events ${state.decks.eventsCount ?? '—'} · merchants ${state.decks.merchantsCount ?? '—'} ·
-        monsters ${state.decks.monstersCount ?? '—'} · twists ${state.decks.twistsCount ?? '—'}
-      </div>
-      <p class="muted" style="margin:0">Layout: ${state.layoutMode || 'random'}</p>
-      <h3>Floor progress</h3>
-      <p class="muted" style="margin:0">Boss defeated: ${state.floor?.bossDefeated ? 'yes' : 'no'} · Stairs: ${stairsOpen ? 'unlocked' : 'locked'} · Key: ${state.floor?.shinyKey ? 'yes' : 'no'}</p>
-      <div class="row">
-        <button type="button" id="btn-unlock-stairs" ${stairsOpen || state.phase === 'victory' ? 'disabled' : ''}>Unlock stairs (key / 5+ stunt)</button>
-        <button class="primary" type="button" id="btn-end-floor" ${state.phase === 'victory' ? 'disabled' : ''}>End floor / victory</button>
-      </div>
-      <p class="muted">The Boss never starts on its own — call <strong>Start Boss fight</strong> once the party has gathered. Winning it unlocks the stairs. Heroes then move onto the Stairway Down — or use <strong>End floor</strong> to wrap up.</p>
-      <h3>Twist hand</h3>
-      <div class="hand">
-        ${(state.decks.twistHand || [])
-          .map((t) =>
-            t.hidden
-              ? `<div class="card-chip hidden">Twist</div>`
-              : `<div class="card-chip"><strong>${escapeHtml(t.name)}</strong><br/><span class="muted">${escapeHtml(t.effect || '')}</span>
-                  <div class="row" style="margin-top:0.35rem">
-                    <button type="button" data-play-twist="${escapeAttr(t.id)}">Play</button>
-                  </div>
-                </div>`,
-          )
-          .join('') || '<span class="muted">None</span>'}
-      </div>
-      <button type="button" id="btn-draw-twist">Draw Twist</button>
-    </div>
-  `;
-}
-
-function renderPending(state, isDealer, meId) {
-  const pending = state.pending;
-  if (!pending) return '';
-  const mine = isDealer || pending.heroPlayerId === meId;
-  if (pending.kind === 'vault') {
-    return `
-      <div class="panel" style="box-shadow:none;border-color:rgba(196,154,74,0.55)">
-        <h3>Vault / trade — keep 1</h3>
-        <p class="muted">Draw 2, keep 1 (rulebook §3). Excess belt slots auto-trim to 2.</p>
-        <div class="row">
-          ${(pending.options || [])
-            .map(
-              (opt, i) => `
-            <button type="button" class="primary" data-keep-loot="${i}" ${mine ? '' : 'disabled'}>
-              Keep ${escapeHtml(opt.name)}
-            </button>`,
-            )
-            .join('')}
-        </div>
-      </div>`;
-  }
-  if (pending.kind === 'event') {
-    const ev = pending.event;
-    return `
-      <div class="panel" style="box-shadow:none;border-color:rgba(180,90,90,0.45)">
-        <h3>${escapeHtml(ev.title)}</h3>
-        <p>${escapeHtml(ev.prompt)}</p>
-        <ul>${(ev.choices || []).map((c) => `<li>${escapeHtml(c)}</li>`).join('')}</ul>
-        <div class="row">
-          <button type="button" class="primary" data-event-choice="a" ${mine ? '' : 'disabled'}>Choice A</button>
-          <button type="button" data-event-choice="b" ${mine ? '' : 'disabled'}>Choice B</button>
-        </div>
-      </div>`;
-  }
-  return '';
-}
-
-function renderRoomActions(state, isDealer, meId) {
-  if (state.phase !== 'exploring' || state.pending) return '';
-  const activeId = state.turnOrder[state.activeHeroIndex];
-  const canAct = isDealer || meId === activeId;
-  if (!canAct || state.explorationActionsLeft < 1) return '';
-  const hero = state.heroes[activeId];
-  if (!hero || hero.downed) {
-    // Still allow shrine revive by active hero? DOWNED can't act — dealer puppets ally
-  }
-  const tile = state.map.tiles.find((t) => t.key === hero?.roomKey);
-  if (!tile?.faceUp) return '';
-  const buttons = [];
-  if (tile.kind === 'vault' && !tile.looted) {
-    buttons.push(`<button type="button" id="btn-vault">Loot vault (1 Action)</button>`);
-  }
-  if (tile.kind === 'shrine') {
-    if (!hero.shrineUsedThisFloor && !hero.downed) {
-      buttons.push(`<button type="button" id="btn-shrine">Rest +3 HP (1 Action)</button>`);
-    }
-    const downedHere = Object.entries(state.heroes).filter(
-      ([, h]) => h.downed && h.roomKey === tile.key,
-    );
-    for (const [pid, h] of downedHere) {
-      buttons.push(
-        `<button type="button" data-revive="${escapeAttr(pid)}">Revive ${escapeHtml(h.name)} (1 Action)</button>`,
-      );
-    }
-  }
-  if (tile.merchant) {
-    buttons.push(
-      `<button type="button" id="btn-merchant" title="${escapeAttr(tile.merchant.greeting || '')}">Trade with ${escapeHtml(tile.merchant.name)}</button>`,
-    );
-  }
-  if (tile.kind === 'hallway' && !tile.hallwayEchoUsed) {
-    buttons.push(`<button type="button" id="btn-hallway">Echo stunt — draw 1 (1 Action)</button>`);
-  }
-  const beltHeal = (hero.belt || []).findIndex((b) => {
-    const g = b.id;
-    return g === 'G-27' || g === 'G-28';
-  });
-  if (beltHeal >= 0) {
-    buttons.push(`<button type="button" data-use-belt="${beltHeal}">Drink Fizz Potion (free)</button>`);
-  }
-  const downedAllies = Object.entries(state.heroes).filter(
-    ([pid, h]) => h.downed && h.roomKey === tile.key && pid !== activeId,
-  );
-  const jammedHere = (state.map.barriers || []).some(
-    (b) => b.aKey === tile.key || b.bKey === tile.key,
-  );
-  if (!hero.downed && jammedHere) {
-    buttons.push(`<button type="button" id="btn-pry-jam">Pry Door Jam (Brawn 3+ · 1 Action)</button>`);
-  }
-  if (!hero.downed && downedAllies.length && state.explorationActionsLeft >= 2) {
-    for (const [pid, h] of downedAllies) {
-      buttons.push(
-        `<button type="button" data-carry="${escapeAttr(pid)}">Carry ${escapeHtml(h.name)} (2 Actions)</button>`,
-      );
-    }
-  }
-  if (!buttons.length) return '';
-  return `<div class="row" style="flex-wrap:wrap">${buttons.join('')}</div>`;
-}
-
-function renderHeroPanels(state, meId, isDealer) {
-  const entries = Object.entries(state.heroes);
-  return entries
-    .map(([pid, hero]) => {
-      const player = state.players.find((p) => p.id === pid);
-      const showHand = pid === meId || (isDealer && player?.isLocalStub);
-      const hand = showHand
-        ? hero.hand
-        : hero.hand.map((c) => ({ ...c, hidden: true }));
-      return `
-        <div class="panel" style="box-shadow:none;padding:0.7rem">
-          <div class="hero-pick-card">
-            ${renderHeroCard(hero.heroId, { size: 'hand', downed: hero.downed })}
-            <div>
-              <div class="row" style="justify-content:space-between">
-                <strong>${escapeHtml(hero.name)}</strong>
-                <span class="pill">HP ${hero.hp}/${hero.maxHp}${hero.downed ? ' · DOWNED' : ''}</span>
-              </div>
-              <div class="muted">${escapeHtml(player?.name || pid)} · ${escapeHtml(hero.perk?.name || '')}</div>
-              <div class="vcard-row" style="margin:0.45rem 0">
-                ${hero.weapon ? renderGearChip(hero.weapon.id) : ''}
-                ${hero.offhand ? renderGearChip(hero.offhand.id) : ''}
-                ${hero.armor ? renderGearChip(hero.armor.id) : ''}
-                ${(hero.belt || []).map((b) => renderGearChip(b.id)).join('')}
-              </div>
-            </div>
-          </div>
-          <h3 style="margin-top:0.5rem">Hand</h3>
-          <div class="vcard-row hand">
-            ${hand.map((c) => renderActionCard(c, { size: 'hand' })).join('') || '<span class="muted">Empty hand</span>'}
-          </div>
-        </div>`;
-    })
-    .join('');
-}
-
 function wireTable() {
+  document.querySelectorAll('[data-inspect-hero]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      session.inspectedHeroId = btn.getAttribute('data-inspect-hero');
+      render();
+    });
+  });
   document.querySelectorAll('[data-move-x]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const x = Number(btn.getAttribute('data-move-x'));
