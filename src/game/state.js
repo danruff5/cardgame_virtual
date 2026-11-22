@@ -167,7 +167,8 @@ export function pickRandomBoss() {
 /**
  * Strip private info for a viewer.
  * Dealer (host machine) gets full authority state for tools + local stubs.
- * Heroes get deck counts only; other players' hands are face-down.
+ * Heroes get deck counts only; other players' hands are face-down — except between
+ * fighters sharing a co-op (Boss) clash, who see each other's hands.
  */
 export function publicStateFor(state, viewerPlayerId) {
   const copy = structuredClone(state);
@@ -205,10 +206,13 @@ export function publicStateFor(state, viewerPlayerId) {
       twistHand: copy.decks.twistHand.map((t) => ({ id: t.id, hidden: true })),
     };
   }
+  // Co-op clash: fighters on the same pile play open-handed with each other.
+  const fighters = copy.clash?.fighters || [];
+  const viewerFights = fighters.includes(viewerPlayerId);
   for (const [pid, hero] of Object.entries(copy.heroes || {})) {
-    if (pid !== viewerPlayerId) {
-      hero.hand = hero.hand.map((c) => ({ id: c.id, hidden: true, type: c.type }));
-    }
+    if (pid === viewerPlayerId) continue;
+    if (viewerFights && fighters.includes(pid)) continue;
+    hero.hand = hero.hand.map((c) => ({ id: c.id, hidden: true, type: c.type }));
   }
   if (copy.clash?.monsterHand) {
     copy.clash.monsterHand = copy.clash.monsterHand.map((c) => ({ id: c.id, hidden: true }));

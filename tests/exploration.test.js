@@ -302,22 +302,10 @@ describe('stairs unlock & floor descent', () => {
 
   it('boss clash victory unlocks stairs', () => {
     const { state: base, heroPlayerId, dealerId } = startExploringFloor({ layoutMode: 'fixed' });
-    let { state, tile } = ensureHeroInKind(base, heroPlayerId, 'boss');
-    // Trigger clash by re-entering face-down boss from neighbor
-    const adj = state.map.tiles.find((t) => t.key !== tile.key && tilesConnect(tile, t));
-    state = placeHeroOn(state, heroPlayerId, adj.key);
-    const boss = state.map.tiles.find((t) => t.key === tile.key);
-    boss.faceUp = false;
-    boss.cleared = false;
-    state.explorationActionsLeft = 2;
-    state.phase = 'exploring';
-    state.clash = null;
+    const { state } = ensureHeroInKind(base, heroPlayerId, 'boss');
+    state.map.tiles.find((t) => t.kind === 'boss').cleared = false;
 
-    let r = applyAction(
-      state,
-      { type: 'move', x: boss.x, y: boss.y, playerId: heroPlayerId },
-      dealerId,
-    );
+    let r = applyAction(state, { type: 'start-boss-clash' }, dealerId);
     expect(r.ok).toBe(true);
     expect(r.state.phase).toBe('clash');
     expect(r.state.clash.isBoss).toBe(true);
