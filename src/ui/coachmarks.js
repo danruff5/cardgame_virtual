@@ -102,10 +102,12 @@ export const COACH_TOURS = [
     steps: [
       {
         id: 'clash-panel',
-        selector: '[data-coach="clash"]',
+        // Target the pile stage inside the modal — not the full-screen backdrop
+        // (full-screen targets push the tip off-screen and block the table).
+        selector: '[data-coach="clash-pile"], [data-coach="clash"]',
         title: 'Clash time!',
         body: 'Match Suit or Rank on the pile. Highlighted cards are legal plays.',
-        place: 'top',
+        place: 'bottom',
       },
       {
         id: 'desperation',
@@ -354,22 +356,29 @@ function updateSpotlightPositions() {
   if (!tour || !step || !target || !hole) return;
 
   const rect = target.getBoundingClientRect();
-  const pad = 8;
-  const top = Math.max(8, rect.top - pad);
-  const left = Math.max(8, rect.left - pad);
-  const width = Math.min(window.innerWidth - left - 8, rect.width + pad * 2);
-  const height = Math.min(window.innerHeight - top - 8, rect.height + pad * 2);
-  hole.style.top = `${top}px`;
-  hole.style.left = `${left}px`;
-  hole.style.width = `${width}px`;
-  hole.style.height = `${height}px`;
+  const holeBox = holeBoxForTarget(rect);
+  hole.style.top = `${holeBox.top}px`;
+  hole.style.left = `${holeBox.left}px`;
+  hole.style.width = `${holeBox.width}px`;
+  hole.style.height = `${holeBox.height}px`;
 
   if (tip) {
-    const tipPos = placeTip(rect, step.place || 'bottom');
+    const tipPos = placeTip(rect, step.place || 'bottom', tip);
     tip.style.top = `${tipPos.top}px`;
     tip.style.left = `${tipPos.left}px`;
     tip.style.maxWidth = `${tipPos.maxWidth}px`;
   }
+}
+
+/** Keep spotlight hole inside the viewport (never full-bleed off edges). */
+function holeBoxForTarget(rect) {
+  const pad = 8;
+  const margin = 8;
+  const left = clamp(rect.left - pad, margin, window.innerWidth - margin - 40);
+  const top = clamp(rect.top - pad, margin, window.innerHeight - margin - 40);
+  const width = Math.min(window.innerWidth - left - margin, Math.max(40, rect.width + pad * 2));
+  const height = Math.min(window.innerHeight - top - margin, Math.max(40, rect.height + pad * 2));
+  return { top, left, width, height };
 }
 
 function setupPositioning(target) {
@@ -419,14 +428,10 @@ export function renderCoachUi({ context, menuOpen }) {
     let tip = '';
     if (tour && step && target) {
       const rect = target.getBoundingClientRect();
-      const pad = 8;
-      const top = Math.max(8, rect.top - pad);
-      const left = Math.max(8, rect.left - pad);
-      const width = Math.min(window.innerWidth - left - 8, rect.width + pad * 2);
-      const height = Math.min(window.innerHeight - top - 8, rect.height + pad * 2);
+      const holeBox = holeBoxForTarget(rect);
       spotlight = `
       <div class="coach-catcher" id="coach-backdrop" aria-hidden="true"></div>
-      <div class="coach-hole" style="top:${top}px;left:${left}px;width:${width}px;height:${height}px"></div>
+      <div class="coach-hole" style="top:${holeBox.top}px;left:${holeBox.left}px;width:${holeBox.width}px;height:${holeBox.height}px"></div>
     `;
       const tipPos = placeTip(rect, step.place || 'bottom');
       const stepNum = availableStepNumber(tour, active.stepIndex);
@@ -476,8 +481,11 @@ export function renderCoachUi({ context, menuOpen }) {
 
     host.innerHTML = `${helpBtn}${menu}${spotlight}${tip}`;
     wireCoachDom();
-    if (tour && step && target) setupPositioning(target);
-    else teardownPositioning();
+    if (tour && step && target) {
+      setupPositioning(target);
+      // Second pass with measured tip height so it never clips off-screen.
+      updateSpotlightPositions();
+    } else teardownPositioning();
   } finally {
     painting = false;
   }
@@ -495,31 +503,66 @@ function countAvailableSteps(tour) {
   return tour.steps.filter((s) => document.querySelector(s.selector)).length;
 }
 
-function placeTip(rect, place) {
-  const tipW = Math.min(300, window.innerWidth - 24);
+/**
+ * Position tip fully inside the viewport. Uses measured tip height when available.
+ * Oversized targets (near full-screen modals) get a safe lower-center placement.
+ */
+function placeTip(rect, place, tipEl) {
+  const margin = 12;
+  const tipW = Math.min(300, window.innerWidth - margin * 2);
+  const measured = tipEl?.getBoundingClientRect?.().height;
+  const tipH = measured && measured > 40 ? measured : 168;
   const gap = 14;
-  let top;
-  let left = clamp(rect.left + rect.width / 2 - tipW / 2, 12, window.innerWidth - tipW - 12);
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const maxTop = Math.max(margin, vh - tipH - margin);
+  const maxLeft = Math.max(margin, vw - tipW - margin);
 
-  if (place === 'top') {
-    top = rect.top - gap - 140;
-    if (top < 12) top = rect.bottom + gap;
-  } else if (place === 'left') {
-    top = clamp(rect.top, 12, window.innerHeight - 160);
-    left = rect.left - tipW - gap;
-    if (left < 12) left = clamp(rect.right + gap, 12, window.innerWidth - tipW - 12);
-  } else if (place === 'right') {
-    top = clamp(rect.top, 12, window.innerHeight - 160);
-    left = rect.right + gap;
-    if (left + tipW > window.innerWidth - 12) {
-      left = clamp(rect.left - tipW - gap, 12, window.innerWidth - tipW - 12);
-    }
-  } else {
-    top = rect.bottom + gap;
-    if (top + 150 > window.innerHeight) top = Math.max(12, rect.top - gap - 140);
+  const coversViewport =
+    rect.width * rect.height > vw * vh * 0.4 ||
+    (rect.width > vw * 0.85 && rect.height > vh * 0.55);
+
+  if (coversViewport) {
+    return {
+      top: clamp(vh - tipH - 72, margin, maxTop),
+      left: clamp((vw - tipW) / 2, margin, maxLeft),
+      maxWidth: tipW,
+    };
   }
 
-  return { top: clamp(top, 12, window.innerHeight - 20), left, maxWidth: tipW };
+  let top;
+  let left = clamp(rect.left + rect.width / 2 - tipW / 2, margin, maxLeft);
+
+  const preferTop = () => {
+    top = rect.top - gap - tipH;
+    if (top < margin) top = rect.bottom + gap;
+  };
+  const preferBottom = () => {
+    top = rect.bottom + gap;
+    if (top + tipH > vh - margin) top = rect.top - gap - tipH;
+  };
+
+  if (place === 'top') {
+    preferTop();
+  } else if (place === 'left') {
+    top = clamp(rect.top, margin, maxTop);
+    left = rect.left - tipW - gap;
+    if (left < margin) left = clamp(rect.right + gap, margin, maxLeft);
+  } else if (place === 'right') {
+    top = clamp(rect.top, margin, maxTop);
+    left = rect.right + gap;
+    if (left + tipW > vw - margin) {
+      left = clamp(rect.left - tipW - gap, margin, maxLeft);
+    }
+  } else {
+    preferBottom();
+  }
+
+  return {
+    top: clamp(top, margin, maxTop),
+    left: clamp(left, margin, maxLeft),
+    maxWidth: tipW,
+  };
 }
 
 function clamp(n, min, max) {
