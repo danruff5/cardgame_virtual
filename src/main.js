@@ -34,6 +34,7 @@ const session = {
   coachMenuOpen: false,
   inspectedHeroId: null,
   lastActiveHeroId: null,
+  carryingTargetId: null,
 };
 
 function coachContext() {
@@ -73,6 +74,7 @@ const room = new PeerRoom({
     session.state = state;
     session.meta = meta;
     session.error = '';
+    session.carryingTargetId = null;
     render();
   },
   onStatus: (msg) => {
@@ -96,17 +98,22 @@ function render() {
   if (!session.state) {
     session.inspectedHeroId = null;
     session.lastActiveHeroId = null;
+    session.carryingTargetId = null;
     app.innerHTML = renderLobbyShell();
     wireLobby();
   } else if (session.state.phase === 'lobby') {
     session.inspectedHeroId = null;
     session.lastActiveHeroId = null;
+    session.carryingTargetId = null;
     app.innerHTML = renderLobbyGame();
     wireLobbyGame();
   } else {
     const activeId = session.state.turnOrder?.[session.state.activeHeroIndex] || null;
     if (session.meta?.isHost && activeId !== session.lastActiveHeroId) {
       session.inspectedHeroId = null;
+    }
+    if (activeId !== session.lastActiveHeroId) {
+      session.carryingTargetId = null;
     }
     session.lastActiveHeroId = activeId;
     app.innerHTML = renderTable(session.state, {
@@ -117,6 +124,7 @@ function render() {
       status: session.status,
       error: session.error,
       inspectedHeroId: session.inspectedHeroId,
+      carryingTargetId: session.carryingTargetId,
     });
     wireTable();
   }
@@ -514,14 +522,26 @@ function wireTable() {
   });
   document.querySelectorAll('[data-carry]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const targetPlayerId = btn.getAttribute('data-carry');
-      const xy = window.prompt('Carry to tile as x,y (e.g. 1,0)');
-      if (!xy) return;
-      const [x, y] = xy.split(',').map((n) => Number(n.trim()));
-      if (!Number.isInteger(x) || !Number.isInteger(y)) return;
+      session.carryingTargetId = btn.getAttribute('data-carry');
+      render();
+    });
+  });
+  document.querySelectorAll('[data-carry-x]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const targetPlayerId = session.carryingTargetId;
+      if (!targetPlayerId) return;
+      const x = Number(btn.getAttribute('data-carry-x'));
+      const y = Number(btn.getAttribute('data-carry-y'));
+      session.carryingTargetId = null;
       room.dispatch(withPlayer({ type: 'carry', targetPlayerId, x, y }));
     });
   });
+  const cancelCarry = () => {
+    session.carryingTargetId = null;
+    render();
+  };
+  document.getElementById('btn-cancel-carry')?.addEventListener('click', cancelCarry);
+  document.getElementById('btn-cancel-carry-tray')?.addEventListener('click', cancelCarry);
 }
 
 function heroName(id) {

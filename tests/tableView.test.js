@@ -5,7 +5,7 @@ import {
   startExploringFloor,
   ensureHeroInKind,
 } from './helpers.js';
-import { publicStateFor } from '../src/game/state.js';
+import { publicStateFor, adjacentOrthogonal, tilesConnect } from '../src/game/state.js';
 import { HEROES, GEAR, EVENTS } from '../src/data/index.js';
 import { renderTable, resolveFocusedHeroId } from '../src/ui/tableView.js';
 
@@ -210,5 +210,85 @@ describe('renderTable desktop felt layout hooks', () => {
       error: '',
     });
     expect(clashHtml).toContain('clash-dimmed');
+  });
+});
+
+describe('click-to-carry downed hero UI', () => {
+  it('shows Carry button when sharing a room with a downed ally and >= 2 actions', () => {
+    const { state } = twoHeroState();
+    const s = structuredClone(state);
+    s.heroes.h2.downed = true;
+    s.heroes.h2.hp = 0;
+
+    const html = renderTable(publicStateFor(s, 'h1'), {
+      isDealer: false,
+      meId: 'h1',
+      roomCode: 'ROOM',
+      role: 'hero',
+      status: 'Ready.',
+      error: '',
+    });
+    expect(html).toContain('data-carry="h2"');
+    expect(html).toContain('Carry Barnaby Brickwall (2 Actions)');
+  });
+
+  it('highlights only adjacent connected unjammed rooms as carry targets and hides move attributes', () => {
+    const { state } = twoHeroState();
+    const s = structuredClone(state);
+    // Move both heroes to a tile that has multiple orthogonal connected neighbors (e.g. (1,1) in fixed 4x4)
+    const centerTile = s.map.tiles.find((t) => t.x === 1 && t.y === 1);
+    s.heroes.h1.roomKey = centerTile.key;
+    s.heroes.h2.roomKey = centerTile.key;
+    s.heroes.h2.downed = true;
+    s.heroes.h2.hp = 0;
+
+    const neighbors = s.map.tiles.filter(
+      (t) => t.key !== centerTile.key && adjacentOrthogonal(centerTile, t) && tilesConnect(centerTile, t),
+    );
+    expect(neighbors.length).toBeGreaterThanOrEqual(2);
+    const blocked = neighbors[0];
+    const allowed = neighbors[1];
+    s.map.barriers = [{ aKey: centerTile.key, bKey: blocked.key }];
+    const farTile = s.map.tiles.find(
+      (t) => t.key !== centerTile.key && !adjacentOrthogonal(centerTile, t),
+    );
+
+    const html = renderTable(publicStateFor(s, 'h1'), {
+      isDealer: false,
+      meId: 'h1',
+      roomCode: 'ROOM',
+      role: 'hero',
+      status: 'Ready.',
+      error: '',
+      carryingTargetId: 'h2',
+    });
+
+    expect(html).toContain('carry-mode-bar');
+    expect(html).toContain('id="btn-cancel-carry"');
+    expect(html).toContain('Barnaby Brickwall');
+    expect(html).toContain('has-carry-bar');
+    expect(html).toContain('is-carry-target');
+    expect(html).toContain(`data-carry-x="${allowed.x}" data-carry-y="${allowed.y}"`);
+    expect(html).not.toContain(`data-carry-x="${blocked.x}" data-carry-y="${blocked.y}"`);
+    expect(html).not.toContain(`data-carry-x="${farTile.x}" data-carry-y="${farTile.y}"`);
+    expect(html).not.toContain('data-move-x=');
+  });
+
+  it('shows a downed note when the active hero is downed', () => {
+    const { state } = twoHeroState();
+    const s = structuredClone(state);
+    s.heroes.h1.downed = true;
+    s.heroes.h1.hp = 0;
+
+    const html = renderTable(publicStateFor(s, 'h1'), {
+      isDealer: false,
+      meId: 'h1',
+      roomCode: 'ROOM',
+      role: 'hero',
+      status: 'Ready.',
+      error: '',
+    });
+    expect(html).toContain('table-downed-note');
+    expect(html).toContain('DOWNED');
   });
 });

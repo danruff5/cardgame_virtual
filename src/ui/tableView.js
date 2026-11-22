@@ -160,7 +160,7 @@ function renderBossGatherBar(state, isDealer, meId) {
     </div>`;
 }
 
-function renderMap(state, isDealer, meId) {
+function renderMap(state, isDealer, meId, activeCarryId = null, carryingHero = null) {
   const activeId = state.turnOrder?.[state.activeHeroIndex];
   const activeHero = state.heroes?.[activeId];
   const from = state.map.tiles.find((t) => t.key === activeHero?.roomKey);
@@ -192,15 +192,17 @@ function renderMap(state, isDealer, meId) {
         })
         .join('');
 
-      const movable = Boolean(
-        canMove &&
-          from &&
+      const adjReachable = Boolean(
+        from &&
           adjacentOrthogonal(from, tile) &&
           tilesConnect(from, tile) &&
           !barrierBetween(state, from, tile) &&
           !state.clash &&
           !state.pending,
       );
+      const carryable = Boolean(activeCarryId && adjReachable);
+      const movable = Boolean(!activeCarryId && canMove && adjReachable);
+      const interactive = carryable || movable;
 
       let label = tile.faceUp ? shortRoomLabel(tile) : '???';
       if (tile.kind === 'stairs' && tile.faceUp) {
@@ -224,25 +226,32 @@ function renderMap(state, isDealer, meId) {
             : 'stairs-locked'
           : '';
       const currentClass = tile.key === activeHero?.roomKey ? 'is-current' : '';
+      const targetClass = carryable ? 'is-carry-target clickable' : movable ? 'clickable' : '';
+      const targetAttrs = carryable
+        ? `data-carry-x="${tile.x}" data-carry-y="${tile.y}"`
+        : movable
+          ? `data-move-x="${tile.x}" data-move-y="${tile.y}"`
+          : 'disabled';
+      const titleText = carryable
+        ? `Carry ${carryingHero?.name || 'ally'} here (2 Actions)`
+        : tile.faceUp
+          ? tile.kind === 'stairs'
+            ? state.floor?.stairsUnlocked
+              ? 'Unlocked — step here to finish the floor'
+              : 'Locked until Floor Boss is defeated (or Dealer unlocks)'
+            : tile.lurkingMonster
+              ? `Lurking: ${tile.lurkingMonster.name}`
+              : tile.rule || tile.name
+          : 'Face-down room';
 
       cells.push(`
         <button type="button"
-          class="map-cell with-art ${tile.faceUp ? 'face-up' : 'face-down'} ${tile.kind} ${stairsClass} ${currentClass} ${movable ? 'clickable' : ''}"
+          class="map-cell with-art ${tile.faceUp ? 'face-up' : 'face-down'} ${tile.kind} ${stairsClass} ${currentClass} ${targetClass}"
           data-row="${y}"
           data-col="${x}"
           ${x === width - 1 ? 'data-col-last="true"' : ''}
-          ${movable ? `data-move-x="${tile.x}" data-move-y="${tile.y}"` : 'disabled'}
-          title="${escAttr(
-            tile.faceUp
-              ? tile.kind === 'stairs'
-                ? state.floor?.stairsUnlocked
-                  ? 'Unlocked — step here to finish the floor'
-                  : 'Locked until Floor Boss is defeated (or Dealer unlocks)'
-                : tile.lurkingMonster
-                  ? `Lurking: ${tile.lurkingMonster.name}`
-                  : tile.rule || tile.name
-              : 'Face-down room',
-          )}">
+          ${interactive ? targetAttrs : 'disabled'}
+          title="${escAttr(titleText)}">
           ${renderRoomTile(tile, { size: 'mini', stairsUnlocked: state.floor?.stairsUnlocked })}
           ${jamHtml}
           <span class="map-label">${escapeHtml(label)}</span>
@@ -326,7 +335,7 @@ function renderPendingOverlay(state, isDealer, meId) {
   return '';
 }
 
-function renderRoomActions(state, isDealer, meId) {
+function renderRoomActions(state, isDealer, meId, activeCarryId = null, carryingHero = null) {
   if (state.phase !== 'exploring' || state.pending) return '';
   const activeId = state.turnOrder?.[state.activeHeroIndex];
   const canAct = isDealer || meId === activeId;
@@ -336,12 +345,20 @@ function renderRoomActions(state, isDealer, meId) {
   const tile = state.map.tiles.find((t) => t.key === hero?.roomKey);
   const buttons = [];
 
-  if (tile?.faceUp && state.explorationActionsLeft >= 1) {
+  if (hero?.downed) {
+    buttons.push(
+      `<p class="muted table-downed-note">${esc(hero.name)} is DOWNED — end turn so an ally can carry or revive you.</p>`,
+    );
+  } else if (activeCarryId && carryingHero) {
+    buttons.push(
+      `<button type="button" id="btn-cancel-carry-tray">Cancel carry (${esc(carryingHero.name)})</button>`,
+    );
+  } else if (tile?.faceUp && state.explorationActionsLeft >= 1) {
     if (tile.kind === 'vault' && !tile.looted) {
       buttons.push(`<button type="button" class="primary" id="btn-vault">Loot vault (1 Action)</button>`);
     }
     if (tile.kind === 'shrine') {
-      if (!hero.shrineUsedThisFloor && !hero.downed) {
+      if (!hero.shrineUsedThisFloor) {
         buttons.push(`<button type="button" class="primary" id="btn-shrine">Rest +3 HP (1 Action)</button>`);
       }
       const downedHere = Object.entries(state.heroes || {}).filter(
@@ -371,13 +388,13 @@ function renderRoomActions(state, isDealer, meId) {
     const jammedHere = (state.map?.barriers || []).some(
       (b) => b.aKey === tile.key || b.bKey === tile.key,
     );
-    if (!hero?.downed && jammedHere) {
+    if (jammedHere) {
       buttons.push(`<button type="button" id="btn-pry-jam">Pry Door Jam (Brawn 3+ · 1 Action)</button>`);
     }
     const downedAllies = Object.entries(state.heroes || {}).filter(
       ([pid, h]) => h.downed && h.roomKey === tile.key && pid !== activeId,
     );
-    if (!hero?.downed && downedAllies.length && state.explorationActionsLeft >= 2) {
+    if (downedAllies.length && state.explorationActionsLeft >= 2) {
       for (const [pid, h] of downedAllies) {
         buttons.push(
           `<button type="button" data-carry="${escAttr(pid)}">Carry ${esc(h.name)} (2 Actions)</button>`,
@@ -503,6 +520,7 @@ export function renderTable(state, ctx = {}) {
     status = '',
     error = '',
     inspectedHeroId = null,
+    carryingTargetId = null,
   } = ctx;
 
   const activeId = state.turnOrder?.[state.activeHeroIndex];
@@ -517,6 +535,21 @@ export function renderTable(state, ctx = {}) {
   const isVictory = state.phase === 'victory';
   const focusedId = resolveFocusedHeroId(state, { isDealer, meId, inspectedHeroId });
 
+  const carryingHero =
+    carryingTargetId &&
+    state.phase === 'exploring' &&
+    !state.pending &&
+    state.explorationActionsLeft >= 2 &&
+    (isDealer || meId === activeId) &&
+    activeHero &&
+    !activeHero.downed &&
+    carryingTargetId !== activeId &&
+    state.heroes?.[carryingTargetId]?.downed &&
+    state.heroes[carryingTargetId].roomKey === activeHero.roomKey
+      ? state.heroes[carryingTargetId]
+      : null;
+  const activeCarryId = carryingHero ? carryingTargetId : null;
+
   const shellClasses = [
     'table-shell',
     'game-layout',
@@ -524,6 +557,7 @@ export function renderTable(state, ctx = {}) {
     isDealer ? 'has-dealer-bar' : '',
     bossWaiting ? 'has-boss-bar' : '',
     isVictory ? 'has-victory-bar' : '',
+    activeCarryId ? 'has-carry-bar' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -564,18 +598,26 @@ export function renderTable(state, ctx = {}) {
       </div>`
     : '';
 
-  const actionsHtml = renderRoomActions(state, isDealer, meId);
+  const actionsHtml = renderRoomActions(state, isDealer, meId, activeCarryId, carryingHero);
   const waitHtml =
     !isDealer && meId !== activeId && state.phase === 'exploring' && !state.pending
       ? `<p class="muted table-wait-note">Waiting for ${esc(activePlayer?.name || activeHero?.name || 'active hero')}…</p>`
       : '';
+
+  const carryBannerHtml = activeCarryId
+    ? `<div class="carry-mode-bar" role="status">
+        <strong>Carrying ${esc(carryingHero.name)}</strong>
+        <span class="muted">Click any highlighted adjacent room on the map (2 Actions).</span>
+        <button type="button" id="btn-cancel-carry">Cancel</button>
+      </div>`
+    : '';
 
   const topBannerHtml = isVictory
     ? `<div class="table-victory-bar">
         <strong>Floor 1 complete!</strong>
         <span class="muted">The Spiral Slide is open — conscious Heroes healed +3 HP.</span>
       </div>`
-    : renderBossGatherBar(state, isDealer, meId);
+    : `${renderBossGatherBar(state, isDealer, meId)}${carryBannerHtml}`;
 
   return `
     <div class="${shellClasses}">
@@ -610,7 +652,7 @@ export function renderTable(state, ctx = {}) {
         <div class="table-col table-col-center">
           ${topBannerHtml}
           <div class="table-map-stage ${state.pending ? 'has-prompt' : ''}">
-            ${renderMap(state, isDealer, meId)}
+            ${renderMap(state, isDealer, meId, activeCarryId, carryingHero)}
             ${renderPendingOverlay(state, isDealer, meId)}
           </div>
         </div>
