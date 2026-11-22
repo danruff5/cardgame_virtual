@@ -20,6 +20,7 @@ import {
 import {
   renderClashModal,
   consumeClashFx,
+  syncClashBodyScrollLock,
   wireClashModal,
   wireTableLogHovers,
   formatCombatLogLine,
@@ -108,6 +109,7 @@ function render() {
     app.innerHTML = renderTable();
     wireTable();
   }
+  syncClashBodyScrollLock(Boolean(session.state?.phase === 'clash' && session.state?.clash));
   syncCoachAfterRender(coachContext());
   paintCoach();
 }

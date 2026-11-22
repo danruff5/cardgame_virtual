@@ -65,6 +65,11 @@
   padding: 0.85rem 1rem 0.95rem;
   color: var(--ink);
   animation: coach-rise 0.3s ease both;
+  /* Stay interactable and inside the visual viewport */
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
 }
 
 .coach-tip-kicker {
