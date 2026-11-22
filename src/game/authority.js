@@ -35,6 +35,7 @@ import {
   themeSparkBonus,
   effectiveMonsterRank,
 } from './clash.js';
+import { bossStartCheck, bossJoinCheck } from './boss.js';
 
 /**
  * Dealer-authoritative reducer. Returns { ok, error?, state }.
@@ -157,7 +158,7 @@ export function applyAction(state, action, actorId) {
         const stairsDist = next.map.stairsDistance ?? '?';
         appendLog(
           next,
-          `Floor 1 begins! Theme: ${theme.name}. Boss waiting: ${boss.name} (${bossHp(next.bossId, heroes.length)} HP).`,
+          `Floor 1 begins! Theme: ${theme.name}. Boss waiting: ${boss.name} (${bossHp(next.bossId, 1)} HP, +3 per extra Hero in the fight).`,
         );
         appendLog(
           next,
@@ -243,9 +244,11 @@ export function applyAction(state, action, actorId) {
         if (!to.faceUp) {
           to.faceUp = true;
           appendLog(next, `${playerName} reveals ${to.name}!`);
-          if (to.kind === 'monster' || to.kind === 'boss') {
+          if (to.kind === 'monster') {
             next.explorationActionsLeft = 0;
             startClash(next, heroPid, to);
+          } else if (to.kind === 'boss') {
+            announceBossWaiting(next, playerName, { revealed: true });
           } else if (to.kind === 'trap') {
             beginEventPrompt(next, heroPid, to);
           } else if (to.kind === 'story') {
@@ -260,10 +263,12 @@ export function applyAction(state, action, actorId) {
           }
         } else if (!tiptoe) {
           appendLog(next, `${playerName} moves to ${to.name}.`);
-          // Re-enter uncleared monster/boss (e.g. after flee)
-          if ((to.kind === 'monster' || to.kind === 'boss') && !to.cleared) {
+          // Re-enter an uncleared lair (e.g. after flee). The Boss never auto-starts.
+          if (to.kind === 'monster' && !to.cleared) {
             next.explorationActionsLeft = 0;
             startClash(next, heroPid, to);
+          } else if (to.kind === 'boss' && !to.cleared) {
+            announceBossWaiting(next, playerName);
           }
         }
 
@@ -291,6 +296,31 @@ export function applyAction(state, action, actorId) {
           return fail(next, 'Not your turn');
         }
         endHeroExplorationTurn(next);
+        break;
+      }
+
+      case 'start-boss-clash': {
+        const check = bossStartCheck(next, actor, action.playerId);
+        if (!check.ok) return fail(next, check.error);
+        const caller =
+          actor.role === 'dealer' ? 'Dealer' : next.heroes[check.leadId]?.name || actor.name;
+        appendLog(
+          next,
+          `${caller} calls the Boss fight — ${check.fighterIds.length} Hero(es) step up!`,
+        );
+        next.explorationActionsLeft = 0;
+        startClash(next, check.leadId, check.tile, null, { fighterIds: check.fighterIds });
+        break;
+      }
+
+      case 'join-boss-clash': {
+        const heroPid =
+          actor.role === 'dealer' ? action.playerId : actor.role === 'hero' ? actorId : null;
+        if (!heroPid) return fail(next, 'Pick a Hero to join the Boss clash');
+        const check = bossJoinCheck(next, heroPid);
+        if (!check.ok) return fail(next, check.error);
+        next.heroes[heroPid].roomKey = next.clash.roomKey;
+        joinBossClash(next, heroPid);
         break;
       }
 
@@ -806,12 +836,13 @@ export function applyAction(state, action, actorId) {
           to.faceUp = true;
           to.cleared = !['monster', 'boss', 'trap'].includes(to.kind);
           appendLog(next, `${hero.name} reveals ${to.name} while carrying ${ally.name}.`);
-          if (to.kind === 'monster' || to.kind === 'boss') {
+          if (to.kind === 'monster') {
             // Carrying into a lair still triggers clash for the carrier
             startClash(next, heroPid, to);
             break;
           }
-          if (to.kind === 'trap') beginEventPrompt(next, heroPid, to);
+          if (to.kind === 'boss') announceBossWaiting(next, hero.name, { revealed: true });
+          else if (to.kind === 'trap') beginEventPrompt(next, heroPid, to);
           else if (to.kind === 'story') beginStoryOrMerchant(next, heroPid, to);
         } else {
           appendLog(next, `${hero.name} carries ${ally.name} to ${to.name} (2 Actions).`);
@@ -859,7 +890,21 @@ function resolveHeroActor(state, actor, playerId) {
   return null;
 }
 
-function startClash(state, heroPlayerId, tile, forcedMonster = null) {
+function announceBossWaiting(state, heroName, { revealed = false } = {}) {
+  const boss = BOSSES.find((b) => b.id === state.bossId) || BOSSES[0];
+  appendLog(
+    state,
+    revealed
+      ? `${boss.name} looms in the Boss Chamber — but waits. Gather the party, then call "Start Boss fight" when ready.`
+      : `${heroName} waits in the Boss Chamber. ${boss.name} won't fight until someone calls it.`,
+  );
+}
+
+/**
+ * Open a clash. Lairs start as soon as a Hero walks in; the Boss only via `start-boss-clash`,
+ * which passes every conscious Hero in the chamber as `fighterIds` (lead first).
+ */
+function startClash(state, heroPlayerId, tile, forcedMonster = null, { fighterIds = null } = {}) {
   state.phase = 'clash';
   let monsterName = 'Mystery Critter';
   let monsterHp = 4;
@@ -870,6 +915,10 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null) {
   let traitId = null;
   let lootText = '';
   const isBoss = tile.kind === 'boss' && !forcedMonster;
+  const fighters =
+    isBoss && fighterIds?.length
+      ? [heroPlayerId, ...fighterIds.filter((id) => id !== heroPlayerId)]
+      : [heroPlayerId];
 
   if (forcedMonster) {
     monsterName = forcedMonster.name;
@@ -882,9 +931,10 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null) {
     lootText = forcedMonster.loot || '';
   } else if (isBoss) {
     const boss = BOSSES.find((b) => b.id === state.bossId) || BOSSES[0];
-    const heroCount = Object.keys(state.heroes).length;
+    // Rulebook §4.4: 12 HP + 3 per Hero beyond the first *in the fight*.
+    // Later joiners add their +3 in joinBossClash.
     monsterName = boss.name;
-    monsterHp = bossHp(boss.id, heroCount);
+    monsterHp = bossHp(boss.id, fighters.length);
     cunning = boss.cunning;
     baseDmg = boss.baseDmg;
     monsterId = boss.id;
@@ -903,10 +953,15 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null) {
     lootText = m.loot || '';
   }
 
-  const hero = state.heroes[heroPlayerId];
-  hero.perkUsedThisClash = false;
-  while (hero.hand.filter((c) => c.type !== 'cramp').length < 4 && state.decks.action.length) {
-    hero.hand.push(state.decks.action.shift());
+  for (const fid of fighters) {
+    const fighter = state.heroes[fid];
+    fighter.perkUsedThisClash = false;
+    while (
+      fighter.hand.filter((c) => c.type !== 'cramp').length < 4 &&
+      state.decks.action.length
+    ) {
+      fighter.hand.push(state.decks.action.shift());
+    }
   }
 
   const monsterHand = [];
@@ -914,14 +969,13 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null) {
     monsterHand.push(state.decks.action.shift());
   }
 
-  const heroCount = Object.keys(state.heroes).length;
   // Boss cadence: after every 2 hero turns in co-op; every hero turn in 1v1 Hard Mode.
-  const bossEvery = isBoss && heroCount > 1 ? 2 : 1;
+  const bossEvery = isBoss && fighters.length > 1 ? 2 : 1;
 
   state.clash = {
     roomKey: tile.key,
     heroPlayerId,
-    fighters: [heroPlayerId],
+    fighters,
     fighterIndex: 0,
     turnOrderDir: 1,
     heroTurnsSinceBoss: 0,
@@ -950,20 +1004,21 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null) {
     negateNextMonsterHit: false,
     pendingKoboldSwings: 0,
     note: isBoss
-      ? 'Boss clash — nearby Heroes may move in to join the same pile!'
+      ? 'Boss clash — Heroes next to the Boss Chamber may still pile in on the same pile!'
       : 'Monster leads — then play matching Suit or Rank (or Wild / Desperation).',
   };
 
+  const fighterNames = fighters.map((id) => state.heroes[id].name).join(' & ');
   if (monsterHand.length) {
     const lead = monsterHand.shift();
     state.clash.monsterHand = monsterHand;
     applyLeadCard(state.clash, lead);
     appendLog(
       state,
-      `Clash! ${hero.name} vs ${monsterName} (${monsterHp} HP). ${monsterName} leads ${cardLabel(lead)}.`,
+      `Clash! ${fighterNames} vs ${monsterName} (${monsterHp} HP). ${monsterName} leads ${cardLabel(lead)}.`,
     );
   } else {
-    appendLog(state, `Clash! ${hero.name} vs ${monsterName} (${monsterHp} HP).`);
+    appendLog(state, `Clash! ${fighterNames} vs ${monsterName} (${monsterHp} HP).`);
   }
   state.clash.whoseTurn = 'hero';
   state.clash.needsDraw = true;
@@ -1641,13 +1696,15 @@ function grantClashLoot(state, hero, clash) {
 function cleanupClash(state, { victory, wasBoss, downed } = {}) {
   const clash = state.clash;
   if (!clash) return;
-  const hero = state.heroes[clash.heroPlayerId];
   const tile = state.map.tiles.find((t) => t.key === clash.roomKey);
-  // Clear cramps
-  hero.hand = hero.hand.filter((c) => !isCramp(c));
-  // Untap gear
-  if (hero.offhand) hero.offhand.tapped = false;
-  if (hero.armor) hero.armor.tapped = false;
+  // Every fighter (not just whoever held the turn) stretches out Cramp! and untaps gear.
+  for (const fid of new Set([clash.heroPlayerId, ...(clash.fighters || [])])) {
+    const fighter = state.heroes[fid];
+    if (!fighter) continue;
+    fighter.hand = fighter.hand.filter((c) => !isCramp(c));
+    if (fighter.offhand) fighter.offhand.tapped = false;
+    if (fighter.armor) fighter.armor.tapped = false;
+  }
   if (victory && tile) tile.cleared = true;
   const bossWin = Boolean(wasBoss ?? clash.isBoss) && victory;
   state.clash = null;

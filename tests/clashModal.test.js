@@ -121,6 +121,124 @@ describe('renderClashModal layout hooks', () => {
   });
 });
 
+function bossClashState() {
+  const state = sampleClashState();
+  const hand = (pid) => [
+    { id: `${pid}-1`, type: 'rank', suit: 'zip', rank: 4, name: 'zip 4' },
+    { id: `${pid}-2`, type: 'rank', suit: 'spark', rank: 1, name: 'spark 1' },
+  ];
+  state.players = [
+    { id: 'p1', name: 'Robin' },
+    { id: 'p2', name: 'Sam' },
+    { id: 'p3', name: 'Kit' },
+    { id: 'p4', name: 'Jo' },
+  ];
+  state.heroes.p2 = { name: 'Bumbles', heroId: 'H-02', hp: 10, maxHp: 10, hand: hand('p2') };
+  state.heroes.p3 = { name: 'Brick', heroId: 'H-03', hp: 7, maxHp: 10, hand: hand('p3') };
+  state.heroes.p4 = { name: 'Fizz', heroId: 'H-04', hp: 10, maxHp: 10, roomKey: '2,1', hand: hand('p4') };
+  state.map = { tiles: [{ key: '2,1', x: 2, y: 1, kind: 'boss', faceUp: true, cleared: false }], barriers: [] };
+  Object.assign(state.clash, {
+    isBoss: true,
+    roomKey: '2,1',
+    monsterId: 'B-01',
+    monsterName: 'Sir Clanks-a-Lot',
+    fighters: ['p1', 'p2', 'p3'],
+    bossEvery: 2,
+  });
+  return state;
+}
+
+function railHtml(html, side) {
+  const start = html.indexOf(`clash-side clash-side-${side}`);
+  if (start < 0) return '';
+  const ends = ['clash-actions', 'clash-zone-hero', 'clash-col-center']
+    .map((marker) => html.indexOf(marker, start))
+    .filter((i) => i > start);
+  return html.slice(start, Math.min(...ends));
+}
+
+describe('renderClashModal co-op table', () => {
+  it('keeps a fighting hero at the bottom with partners face-up on both rails', () => {
+    const html = renderClashModal(bossClashState(), false, 'p2', {});
+    const handZone = html.slice(html.indexOf('clash-zone-hand'), html.indexOf('clash-col-right'));
+    expect(handZone).toContain('Your hand');
+    expect(handZone).toContain('data-fly="c:p2-1"');
+    expect(handZone).toContain('disabled');
+
+    expect(railHtml(html, 'left')).toContain('data-ally="p3"');
+    expect(railHtml(html, 'right')).toContain('data-ally="p1"');
+    expect(railHtml(html, 'right')).toContain('data-fly="c:a1"');
+    expect(railHtml(html, 'right')).not.toContain('data-fly-back');
+    expect(railHtml(html, 'right')).toContain('Playing');
+    expect(html).toContain('data-coach="clash-wait"');
+  });
+
+  it('gives the dealer the turn hero at the bottom and everyone else on the rails', () => {
+    const html = renderClashModal(bossClashState(), true, 'dealer', {});
+    expect(html).toContain('data-clash-card="a1"');
+    expect(html).toContain('data-ally="p2"');
+    expect(html).toContain('data-ally="p3"');
+    expect(html).not.toContain('data-ally="p1"');
+    expect(html).toContain('Pip &amp; Bumbles &amp; Brick');
+    expect(html).toContain('Acts every 2 hero turn(s)');
+  });
+
+  it('tags the table zones the card flights use', () => {
+    const html = renderClashModal(bossClashState(), true, 'dealer', {});
+    for (const zone of ['deck', 'discard', 'desp', 'pile', 'monster-hand', 'seat:p1', 'seat:p2', 'seat:p3']) {
+      expect(html).toContain(`data-fly="z:${zone}"`);
+    }
+    expect(html).toContain('data-fly="c:m1" data-fly-back');
+    expect(html).toContain('data-fly="c:t1"');
+  });
+
+  it('offers the dealer a pile-in button for a Hero waiting in the chamber', () => {
+    const html = renderClashModal(bossClashState(), true, 'dealer', {});
+    expect(html).toContain('data-clash-join="p4"');
+    expect(html).toContain('Bring in Fizz');
+  });
+
+  it('lets a nearby Hero join from their own screen and keeps hands private until then', () => {
+    const html = renderClashModal(bossClashState(), false, 'p4', {});
+    expect(html).toContain('data-clash-join="p4"');
+    expect(html).toContain('Join the fight');
+    expect(html).toContain('hand is private');
+    expect(html).not.toContain('data-clash-card=');
+  });
+
+  it('shows the turn banner once per hand-off and the result on the closing frame', () => {
+    const live = renderClashModal(bossClashState(), true, 'dealer', { turnChanged: true });
+    expect(live).toContain('clash-turn-banner');
+    expect(renderClashModal(bossClashState(), true, 'dealer', {})).not.toContain('clash-turn-banner');
+
+    const closing = renderClashModal(bossClashState(), true, 'dealer', { closing: 'victory', turnChanged: true });
+    expect(closing).toContain('outcome-victory');
+    expect(closing).toContain('POOF!');
+    expect(closing).not.toContain('clash-turn-banner');
+    expect(closing).not.toContain('btn-clash-win');
+    expect(closing).not.toContain('data-clash-join');
+  });
+});
+
+describe('consumeClashFx co-op', () => {
+  it('tracks HP per fighter so a turn hand-off never fakes damage', () => {
+    const session = {};
+    const state = bossClashState();
+    consumeClashFx(session, state);
+
+    state.clash.heroPlayerId = 'p3';
+    const handOff = consumeClashFx(session, state);
+    expect(handOff.heroDelta).toBe(0);
+    expect(handOff.turnChanged).toBe(true);
+    expect(handOff.hitFlash).toBe(false);
+
+    state.heroes.p2.hp = 8;
+    const hit = consumeClashFx(session, state);
+    expect(hit.heroDeltas).toMatchObject({ p1: 0, p2: -2, p3: 0 });
+    expect(hit.hitFlash).toBe(true);
+  });
+});
+
 describe('clash coachmark selectors', () => {
   it('targets the pile stage, not the full-screen backdrop', () => {
     const clashTour = COACH_TOURS.find((t) => t.id === 'clash');
