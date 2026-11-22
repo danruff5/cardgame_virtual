@@ -1,0 +1,1322 @@
+/* —— Clash modal: a card table that fills the screen ——
+ *
+ *   log · left partners | monster hand        | monster card + stats
+ *                       | deck · PILE · desp. | right partners
+ *   actions             | hero hand           | hero card + gear
+ *
+ * Card size is derived from the viewport so three rows of cards always fit.
+ */
+
+#clash-layer {
+  --card-h: clamp(104px, min(calc((100vh - 300px) / 3), 11.5vw), 196px);
+  --card-w: calc(var(--card-h) * 0.72);
+  --mini-h: calc(var(--card-h) * 0.62);
+  --mini-w: calc(var(--mini-h) * 0.72);
+  --felt: rgba(52, 92, 70, 0.62);
+  --felt-deep: rgba(24, 44, 34, 0.5);
+}
+
+#clash-layer .vcard.size-hand {
+  width: var(--card-w);
+  height: var(--card-h);
+}
+
+#clash-layer .vcard.size-mini {
+  width: var(--mini-w);
+  height: var(--mini-h);
+  padding: 4px;
+}
+
+/* Seat and partner cards are portraits here: HP and tier live beside them, not in the header. */
+#clash-layer .vcard .card-header {
+  overflow: hidden;
+}
+
+#clash-layer .clash-seat-card .badge-pill,
+#clash-layer .vcard.size-mini .badge-pill {
+  display: none;
+}
+
+.clash-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: clamp(0.35rem, 1.4vh, 0.9rem) clamp(0.35rem, 1.2vw, 1.1rem);
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 40%, rgba(80, 42, 28, 0.55), transparent 70%),
+    rgba(12, 9, 6, 0.8);
+}
+
+.clash-modal-backdrop.is-entering {
+  animation: clash-backdrop-in 0.3s ease both;
+}
+
+.clash-modal-backdrop.is-entering .clash-modal {
+  animation: clash-modal-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.clash-modal-backdrop.is-leaving {
+  animation: clash-backdrop-out 0.28s ease both;
+  pointer-events: none;
+}
+
+.clash-modal-backdrop.clash-screen-hit {
+  animation: clash-screen-hit 0.4s ease;
+}
+
+.clash-modal {
+  width: min(1760px, 100%);
+  height: 100%;
+  max-height: 1120px;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  gap: 0.5rem;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 0.65rem 0.8rem 0.8rem;
+  border-radius: 18px;
+  border: 1px solid rgba(243, 230, 208, 0.22);
+  background:
+    linear-gradient(165deg, rgba(58, 42, 30, 0.97), rgba(28, 22, 16, 0.98)),
+    radial-gradient(ellipse at 20% 0%, rgba(196, 120, 58, 0.18), transparent 50%);
+  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.55);
+  overscroll-behavior: contain;
+}
+
+.clash-modal.is-boss {
+  border-color: rgba(160, 120, 210, 0.5);
+}
+
+/* —— Header —— */
+.clash-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  min-width: 0;
+}
+
+.clash-title {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.clash-kicker {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #d99b66;
+}
+
+.clash-modal-header h2 {
+  margin: 0;
+  font-size: clamp(1.1rem, 2.2vw, 1.6rem);
+  line-height: 1.15;
+}
+
+.clash-vs {
+  color: var(--muted);
+  font-size: 0.75em;
+  font-style: italic;
+  font-weight: 400;
+}
+
+.clash-note {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.82rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.clash-turn-chip {
+  flex: 0 0 auto;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.92rem;
+  border: 1px solid rgba(243, 230, 208, 0.25);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.clash-turn-chip.is-hero {
+  border-color: rgba(111, 158, 122, 0.8);
+  color: #c4ecd0;
+}
+
+.clash-turn-chip.is-monster {
+  border-color: rgba(196, 92, 74, 0.8);
+  color: #ffc9be;
+}
+
+.clash-turn-chip.just-changed {
+  animation: clash-chip-pop 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* —— Table —— */
+.clash-modal-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 14px;
+}
+
+.clash-table {
+  position: relative;
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: clamp(200px, 19vw, 300px) minmax(0, 1fr) clamp(270px, 25vw, 400px);
+  gap: 0.6rem 0.9rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 14px;
+  border: 2px solid rgba(110, 76, 46, 0.9);
+  background:
+    radial-gradient(ellipse 62% 78% at 50% 50%, var(--felt), var(--felt-deep) 62%, transparent 86%),
+    linear-gradient(180deg, rgba(52, 38, 26, 0.92), rgba(24, 18, 12, 0.96));
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    inset 0 0 60px rgba(0, 0, 0, 0.35);
+}
+
+.clash-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 0;
+  min-height: 0;
+}
+
+.clash-col-center {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.clash-col-right {
+  justify-content: space-between;
+}
+
+.clash-zone {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.clash-zone-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.clash-zone-label .muted,
+.clash-perk {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.78rem;
+}
+
+.clash-perk {
+  color: #ffe4a3;
+}
+
+/* Whose side of the table is live */
+.clash-zone-monster,
+.clash-zone-hero {
+  padding: 0.5rem 0.55rem;
+  border-radius: 12px;
+  border: 1px solid rgba(243, 230, 208, 0.1);
+  background: rgba(0, 0, 0, 0.24);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.clash-zone-hero.is-turn {
+  border-color: rgba(111, 158, 122, 0.75);
+  box-shadow: 0 0 22px rgba(111, 158, 122, 0.22);
+}
+
+.clash-zone-monster.is-turn {
+  border-color: rgba(196, 92, 74, 0.75);
+  box-shadow: 0 0 22px rgba(196, 92, 74, 0.22);
+}
+
+/* —— Seats: info column + card on the outside edge —— */
+.clash-seat-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: stretch;
+  justify-content: flex-end;
+}
+
+.clash-seat-info {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.clash-seat-card {
+  flex: 0 0 auto;
+}
+
+.clash-seat-card.is-hit,
+.clash-ally-portrait.is-hit {
+  animation: clash-shake 0.45s ease;
+}
+
+.clash-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.clash-chip {
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  border: 1px solid rgba(243, 230, 208, 0.2);
+  background: rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+}
+
+.clash-chip.is-warn {
+  border-color: rgba(227, 167, 35, 0.8);
+  color: #ffe4a3;
+}
+
+.clash-chip.is-good,
+.clash-chip.is-live {
+  border-color: rgba(111, 158, 122, 0.85);
+  color: #c4ecd0;
+}
+
+.clash-chip.is-live {
+  animation: clash-live-pulse 1.6s ease-in-out infinite;
+}
+
+.clash-trait {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.clash-gear-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: auto;
+}
+
+.clash-gear {
+  display: grid;
+  justify-items: center;
+  gap: 0.1rem;
+  transition: transform 0.25s ease, filter 0.25s ease;
+}
+
+#clash-layer .clash-gear .vcard.size-mini {
+  width: calc(var(--mini-w) * 0.74);
+  height: calc(var(--mini-h) * 0.74);
+  padding: 3px;
+}
+
+.clash-gear .card-title {
+  font-size: 6px;
+}
+
+.clash-gear-tag {
+  font-size: 0.6rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.clash-gear.is-tapped .vcard {
+  transform: rotate(90deg) scale(0.8);
+  filter: grayscale(0.6) brightness(0.75);
+}
+
+.clash-gear.is-tapped .clash-gear-tag {
+  color: #ffb4a8;
+}
+
+/* —— Top centre: monster hand —— */
+.clash-zone-mhand {
+  justify-items: center;
+  text-align: center;
+  padding: 0.3rem 0.8rem 0.4rem;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+
+.clash-zone-mhand.is-turn {
+  border-color: rgba(196, 92, 74, 0.55);
+  background: rgba(120, 40, 32, 0.18);
+}
+
+.clash-monster-hand {
+  position: relative;
+  display: inline-flex;
+  justify-content: center;
+  max-width: 100%;
+  padding: 0 1.4rem;
+}
+
+.clash-monster-hand.empty {
+  padding: 0.2rem;
+}
+
+.clash-back-fan {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.clash-back-slot {
+  flex: 0 1 calc(var(--mini-w) * 0.58);
+  min-width: 12px;
+}
+
+.clash-back-slot:last-child {
+  flex: 0 0 var(--mini-w);
+}
+
+.clash-back-slot .vcard {
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45);
+}
+
+.clash-monster-go {
+  margin-top: 0.15rem;
+  animation: clash-live-pulse 1.6s ease-in-out infinite;
+}
+
+/* —— Centre: deck · pile · desperation —— */
+.clash-zone-mid {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(0.8rem, 3vw, 2.6rem);
+  width: 100%;
+}
+
+.clash-stacks {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+}
+
+.clash-stack {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 0.2rem;
+}
+
+.clash-stack > .vcard {
+  box-shadow:
+    2px 2px 0 rgba(20, 16, 12, 0.9),
+    4px 4px 0 rgba(20, 16, 12, 0.7),
+    0 10px 18px rgba(0, 0, 0, 0.4);
+}
+
+.clash-stack-label {
+  font-size: 0.66rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.clash-stack-count {
+  position: absolute;
+  right: -0.5rem;
+  top: -0.5rem;
+  z-index: 5;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.3rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #c4783a, #8a4e22);
+  color: #1a120a;
+  font-weight: 800;
+  font-size: 0.78rem;
+  border: 1px solid rgba(255, 230, 190, 0.35);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+}
+
+.clash-monster-hand .clash-stack-count {
+  right: 0;
+  top: -0.2rem;
+}
+
+.clash-slot {
+  width: var(--mini-w);
+  height: var(--mini-h);
+  border-radius: 6px;
+  border: 1px dashed rgba(243, 230, 208, 0.3);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.clash-desp-back .card-content {
+  background: #8a3d14;
+}
+
+.clash-last-desp.just-flipped .vcard {
+  animation: clash-desp-flip 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.clash-mid-stage {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 0.45rem;
+}
+
+.clash-mid-stage.stage-pulse .clash-active-pill {
+  animation: clash-chip-pop 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.clash-pile {
+  position: relative;
+  width: calc(var(--card-w) + 28px);
+  height: calc(var(--card-h) + 14px);
+  display: grid;
+  place-items: center;
+}
+
+.clash-pile-card {
+  grid-area: 1 / 1;
+  transform: rotate(var(--tilt, 0deg));
+  filter: brightness(0.82);
+}
+
+.clash-pile-card.is-top {
+  filter: none;
+  z-index: 2;
+}
+
+.clash-pile-card .vcard {
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.45);
+}
+
+.clash-pile-empty {
+  width: var(--card-w);
+  height: var(--card-h);
+  border-radius: 10px;
+  border: 1px dashed rgba(243, 230, 208, 0.28);
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.18);
+  font-size: 0.82rem;
+}
+
+.clash-active-pill {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.25rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--active, var(--accent)) 70%, transparent);
+  background: rgba(0, 0, 0, 0.42);
+  white-space: nowrap;
+}
+
+.clash-active-pill strong {
+  color: var(--active, var(--ink));
+  font-size: 1.05rem;
+  filter: brightness(1.35);
+}
+
+/* —— Bottom centre: the hand —— */
+.clash-zone-hand {
+  width: 100%;
+  justify-items: center;
+}
+
+.clash-hand-block {
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 0.2rem;
+  padding: 0.35rem 0.6rem 0.45rem;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+
+.clash-hand-block.is-turn {
+  border-color: rgba(111, 158, 122, 0.5);
+  background: rgba(60, 110, 76, 0.16);
+}
+
+.clash-hand-private {
+  margin: 0;
+  text-align: center;
+  font-size: 0.8rem;
+}
+
+.clash-player-hand {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  padding-top: 8px;
+}
+
+.clash-card-btn {
+  appearance: none;
+  position: relative;
+  z-index: 1;
+  flex: 0 1 calc(var(--card-w) + 8px);
+  min-width: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  cursor: default;
+  overflow: visible;
+  text-align: left;
+  transition: transform 0.16s ease;
+}
+
+.clash-card-btn:last-child {
+  flex-shrink: 0;
+}
+
+.clash-card-btn:hover,
+.clash-card-btn:focus-visible {
+  z-index: 45;
+}
+
+button.clash-card-btn:hover:not(:disabled) {
+  transform: translateY(-10px);
+}
+
+.clash-card-btn.legal {
+  cursor: pointer;
+  animation: clash-legal-breathe 2.4s ease-in-out infinite;
+}
+
+.clash-card-btn.legal:hover {
+  animation: none;
+}
+
+.clash-card-btn.legal .vcard {
+  box-shadow:
+    0 0 0 2px #8fbf9a,
+    0 0 18px rgba(111, 158, 122, 0.6),
+    0 8px 18px rgba(0, 0, 0, 0.3);
+}
+
+button.clash-card-btn:disabled {
+  opacity: 1;
+}
+
+button.clash-card-btn:disabled .vcard {
+  filter: grayscale(0.3) brightness(0.78);
+}
+
+.clash-fly {
+  display: block;
+  position: relative;
+  width: max-content;
+}
+
+.clash-fly-ghost {
+  position: fixed;
+  z-index: 95;
+  pointer-events: none;
+}
+
+.clash-fly-ghost.is-back {
+  backface-visibility: hidden;
+}
+
+#clash-layer .clash-fly-ghost .vcard {
+  width: 100%;
+  height: 100%;
+}
+
+/* —— Side rails: co-op partners, smaller and face-up —— */
+.clash-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.clash-ally {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 12px;
+  border: 1px solid rgba(243, 230, 208, 0.12);
+  background: rgba(0, 0, 0, 0.26);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.clash-ally.is-turn {
+  border-color: rgba(111, 158, 122, 0.8);
+  box-shadow: 0 0 20px rgba(111, 158, 122, 0.25);
+}
+
+.clash-side-left .clash-ally.is-joining {
+  animation: clash-join-left 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.clash-side-right .clash-ally.is-joining {
+  animation: clash-join-right 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.clash-ally-head {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+#clash-layer .clash-ally-portrait .vcard.size-mini {
+  width: calc(var(--mini-w) * 0.8);
+  height: calc(var(--mini-h) * 0.8);
+}
+
+.clash-ally-info {
+  flex: 1 1 0;
+  min-width: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.clash-ally-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.clash-ally-player {
+  font-size: 0.72rem;
+}
+
+.clash-ally-hand {
+  display: flex;
+  min-width: 0;
+}
+
+.clash-mini {
+  flex: 0 1 calc(var(--mini-w) + 4px);
+  min-width: 14px;
+  position: relative;
+}
+
+.clash-mini:last-child {
+  flex-shrink: 0;
+}
+
+.clash-mini:hover {
+  z-index: 45;
+}
+
+/* Hover tips must stay inside the modal: flip them away from the edges. */
+.clash-zone-monster .vcard > .card-hover-tip,
+.clash-zone-mhand .vcard > .card-hover-tip {
+  bottom: auto;
+  top: calc(100% + 8px);
+}
+
+.clash-col-right .vcard > .card-hover-tip {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+.clash-col-left .vcard > .card-hover-tip {
+  left: 0;
+  transform: none;
+}
+
+.clash-player-hand > :first-child .card-hover-tip {
+  left: 0;
+  transform: none;
+}
+
+.clash-player-hand > :last-child:not(:first-child) .card-hover-tip {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+/* —— HP meters —— */
+.clash-hp {
+  position: relative;
+  padding: 0.35rem 0.5rem 0.45rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.clash-hp-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  margin-bottom: 0.25rem;
+}
+
+.clash-hp-label span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clash-hp-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.clash-hp-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6f9e7a, #9bc7a4);
+  transition: width 0.35s ease;
+}
+
+.clash-hp.monster .clash-hp-fill {
+  background: linear-gradient(90deg, #c45c4a, #d99b66);
+}
+
+.clash-hp.hp-flash-hurt {
+  animation: clash-hp-hurt 0.55s ease;
+}
+
+.clash-hp.hp-flash-heal {
+  animation: clash-hp-heal 0.55s ease;
+}
+
+.hp-float {
+  position: absolute;
+  right: 0.5rem;
+  top: -0.5rem;
+  font-weight: 800;
+  font-size: 1.15rem;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+  animation: clash-hp-float 1.1s ease both;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.hp-delta-down {
+  color: #ffb4a8;
+}
+
+.hp-delta-up {
+  color: #9bc7a4;
+}
+
+/* —— Left column: log + actions —— */
+.clash-combat-log {
+  flex: 1 1 0;
+  min-height: 90px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 12px;
+  border: 1px solid rgba(243, 230, 208, 0.12);
+  background: rgba(0, 0, 0, 0.34);
+  min-width: 0;
+}
+
+.clash-combat-log h3 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.clash-log {
+  max-height: none;
+  min-height: 0;
+  align-content: start;
+  overflow: auto;
+  overscroll-behavior: contain;
+  font-size: 0.82rem;
+}
+
+.clash-log-line {
+  line-height: 1.35;
+}
+
+.clash-log-line:first-child {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.clash-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.clash-actions > button {
+  width: 100%;
+}
+
+.clash-tray-note {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.clash-check {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.clash-error {
+  margin: 0;
+  padding: 0.35rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid rgba(196, 92, 74, 0.7);
+  background: rgba(120, 40, 32, 0.4);
+  color: #ffc9be;
+  font-size: 0.82rem;
+  animation: clash-shake 0.4s ease;
+}
+
+.clash-dealer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed rgba(243, 230, 208, 0.16);
+}
+
+.clash-dealer-row button {
+  flex: 1 1 auto;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.82rem;
+}
+
+/* —— Turn hand-off banner & result banner —— */
+.clash-turn-banner,
+.clash-outcome-banner {
+  position: absolute;
+  left: 50%;
+  z-index: 75;
+  pointer-events: none;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.clash-outcome-banner {
+  top: 50%;
+}
+
+/* Sits over the "Active" pill under the pile, so the card that just landed stays in view. */
+.clash-turn-banner {
+  bottom: -0.55rem;
+  padding: 0.4rem 2.2rem;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: clamp(1.15rem, 2.3vw, 1.8rem);
+  font-weight: 650;
+  background: rgba(18, 14, 10, 0.94);
+  border: 2px solid rgba(243, 230, 208, 0.35);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+  animation: clash-turn-sweep 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.18s both;
+}
+
+.clash-turn-banner.is-hero {
+  border-color: rgba(111, 158, 122, 0.9);
+  color: #c4ecd0;
+}
+
+.clash-turn-banner.is-monster {
+  border-color: rgba(196, 92, 74, 0.9);
+  color: #ffc9be;
+}
+
+.clash-outcome-banner {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.9rem 3rem 1rem;
+  border-radius: 18px;
+  background: rgba(18, 14, 10, 0.93);
+  border: 2px solid rgba(255, 228, 163, 0.6);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
+  animation: clash-outcome-in 0.55s cubic-bezier(0.22, 1.4, 0.36, 1) 0.25s both;
+}
+
+.clash-outcome-banner strong {
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 4.5vw, 3.2rem);
+  line-height: 1.05;
+  color: #ffe4a3;
+}
+
+.clash-outcome-banner span {
+  color: var(--muted);
+}
+
+.outcome-downed .clash-outcome-banner {
+  border-color: rgba(196, 92, 74, 0.8);
+}
+
+.outcome-downed .clash-outcome-banner strong {
+  color: #ffb4a8;
+}
+
+.is-closing .clash-modal {
+  pointer-events: none;
+}
+
+.outcome-victory .clash-zone-monster .clash-seat-card {
+  animation: clash-poof 0.7s ease-in 0.35s both;
+}
+
+/* —— Narrow screens: stack the table, scroll inside the modal —— */
+@media (max-width: 959px) {
+  #clash-layer {
+    --card-h: clamp(112px, 30vw, 150px);
+  }
+
+  .clash-table {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    padding: 0.6rem;
+  }
+
+  .clash-col {
+    display: contents;
+  }
+
+  .clash-zone-monster {
+    order: 1;
+  }
+
+  .clash-zone-mhand {
+    order: 2;
+    align-self: center;
+  }
+
+  .clash-zone-mid {
+    order: 3;
+    gap: 0.5rem;
+  }
+
+  .clash-stacks {
+    gap: 0.35rem;
+  }
+
+  .clash-stack-label {
+    font-size: 0.56rem;
+    letter-spacing: 0;
+  }
+
+  .clash-zone-monster,
+  .clash-zone-hero {
+    padding: 0.4rem 0.5rem;
+  }
+
+  .clash-trait {
+    -webkit-line-clamp: 2;
+  }
+
+  #clash-layer .clash-zone-monster .vcard.size-hand {
+    width: calc(var(--card-w) * 0.8);
+    height: calc(var(--card-h) * 0.8);
+  }
+
+  .clash-side {
+    order: 4;
+  }
+
+  .clash-zone-hand {
+    order: 5;
+  }
+
+  .clash-zone-hero {
+    order: 6;
+  }
+
+  .clash-actions {
+    order: 7;
+  }
+
+  .clash-combat-log {
+    order: 8;
+    flex: 0 0 auto;
+  }
+
+  .clash-log {
+    max-height: 30vh;
+  }
+
+  .clash-note {
+    display: none;
+  }
+
+  .clash-outcome-banner {
+    position: fixed;
+  }
+}
+
+@media (max-width: 520px) {
+  .clash-modal {
+    padding: 0.5rem;
+  }
+
+  .clash-active-pill {
+    font-size: 0.85rem;
+    padding: 0.2rem 0.6rem;
+  }
+}
+
+/* Keep the floating help button off the cards while the table is up. */
+body.clash-open .coach-help-btn {
+  right: 0.3rem;
+  bottom: 0.3rem;
+  width: 2rem;
+  height: 2rem;
+  font-size: 1rem;
+}
+
+/* —— Keyframes —— */
+@keyframes clash-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes clash-backdrop-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes clash-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes clash-chip-pop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.14);
+    filter: brightness(1.3);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes clash-live-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 228, 163, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(255, 228, 163, 0.16);
+  }
+}
+
+@keyframes clash-legal-breathe {
+  0%,
+  100% {
+    transform: translateY(-2px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes clash-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-7px) rotate(-2deg);
+  }
+  45% {
+    transform: translateX(6px) rotate(2deg);
+  }
+  70% {
+    transform: translateX(-3px);
+  }
+}
+
+@keyframes clash-hp-hurt {
+  0%,
+  100% {
+    box-shadow: none;
+    background: rgba(0, 0, 0, 0.3);
+  }
+  35% {
+    box-shadow: 0 0 0 2px rgba(196, 92, 74, 0.65);
+    background: rgba(120, 40, 32, 0.45);
+  }
+}
+
+@keyframes clash-hp-heal {
+  0%,
+  100% {
+    box-shadow: none;
+  }
+  40% {
+    box-shadow: 0 0 0 2px rgba(111, 158, 122, 0.65);
+  }
+}
+
+@keyframes clash-hp-float {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.8);
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(0) scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-26px) scale(1);
+  }
+}
+
+@keyframes clash-screen-hit {
+  0%,
+  100% {
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 40%, rgba(80, 42, 28, 0.55), transparent 70%),
+      rgba(12, 9, 6, 0.8);
+  }
+  40% {
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 40%, rgba(140, 48, 36, 0.7), transparent 70%),
+      rgba(28, 8, 6, 0.84);
+  }
+}
+
+@keyframes clash-turn-sweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-90%) scale(0.92);
+  }
+  22%,
+  68% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-10%) scale(0.92);
+  }
+}
+
+@keyframes clash-outcome-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes clash-poof {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    filter: none;
+  }
+  40% {
+    transform: scale(1.12) rotate(-4deg);
+    filter: brightness(1.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.3) rotate(18deg);
+    filter: blur(6px) brightness(2);
+  }
+}
+
+@keyframes clash-desp-flip {
+  0% {
+    transform: translateX(calc(-100% - 0.6rem)) rotateY(180deg);
+    opacity: 0.2;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes clash-join-left {
+  from {
+    opacity: 0;
+    transform: translateX(-60px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes clash-join-right {
+  from {
+    opacity: 0;
+    transform: translateX(60px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #clash-layer *,
+  #clash-layer *::before,
+  #clash-layer *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  #clash-layer .clash-outcome-banner {
+    animation: none;
+    transform: translate(-50%, -50%);
+  }
+
+  #clash-layer .clash-turn-banner {
+    display: none;
+  }
+}

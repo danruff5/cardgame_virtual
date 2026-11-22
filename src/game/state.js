@@ -11,7 +11,6 @@ import {
   BOSSES,
   EVENTS,
   MERCHANTS,
-  STORIES,
 } from '../data/index.js';
 import { shuffle, uid } from './util.js';
 import { buildFixedSnakeMap, buildRandomFloorMap, tilesConnect } from './mapLayout.js';
@@ -65,12 +64,11 @@ export function createEmptyState(roomCode, hostPlayerId, hostName) {
       loot: [],
       lootDiscard: [],
       events: [],
-      storyMerchant: [],
+      merchants: [],
     },
     heroes: {}, // playerId -> hero runtime
     clash: null,
-    storyStack: [], // Part II callback ids (tucked for Floor 2+)
-    pending: null, // vault / event / story choice modal
+    pending: null, // vault / event choice modal
     layoutMode: 'random', // random | fixed
   };
 }
@@ -137,7 +135,6 @@ export function buildFloorMap(layoutMode = 'random', recipeIds) {
 }
 
 export function prepareFloorDecks() {
-  const partOnes = STORIES.filter((s) => s.part === 1);
   return {
     action: shuffle(buildActionDeckCatalog()),
     actionDiscard: [],
@@ -149,10 +146,7 @@ export function prepareFloorDecks() {
     loot: shuffle(buildFloor1LootDeck()),
     lootDiscard: [],
     events: shuffle(EVENTS.map((e) => ({ ...e }))),
-    storyMerchant: shuffle([
-      ...MERCHANTS.map((m) => ({ ...m, cardKind: 'merchant' })),
-      ...partOnes.map((s) => ({ ...s, cardKind: 'story' })),
-    ]),
+    merchants: shuffle(MERCHANTS.map((m) => ({ ...m }))),
   };
 }
 
@@ -167,7 +161,8 @@ export function pickRandomBoss() {
 /**
  * Strip private info for a viewer.
  * Dealer (host machine) gets full authority state for tools + local stubs.
- * Heroes get deck counts only; other players' hands are face-down.
+ * Heroes get deck counts only; other players' hands are face-down — except between
+ * fighters sharing a co-op (Boss) clash, who see each other's hands.
  */
 export function publicStateFor(state, viewerPlayerId) {
   const copy = structuredClone(state);
@@ -186,7 +181,7 @@ export function publicStateFor(state, viewerPlayerId) {
       twistsCount: copy.decks.twists.length,
       lootCount: copy.decks.loot?.length ?? 0,
       eventsCount: copy.decks.events?.length ?? 0,
-      storyMerchantCount: copy.decks.storyMerchant?.length ?? 0,
+      merchantsCount: copy.decks.merchants?.length ?? 0,
     };
     return copy;
   }
@@ -201,14 +196,17 @@ export function publicStateFor(state, viewerPlayerId) {
       twistsCount: copy.decks.twists.length,
       lootCount: copy.decks.loot?.length ?? 0,
       eventsCount: copy.decks.events?.length ?? 0,
-      storyMerchantCount: copy.decks.storyMerchant?.length ?? 0,
+      merchantsCount: copy.decks.merchants?.length ?? 0,
       twistHand: copy.decks.twistHand.map((t) => ({ id: t.id, hidden: true })),
     };
   }
+  // Co-op clash: fighters on the same pile play open-handed with each other.
+  const fighters = copy.clash?.fighters || [];
+  const viewerFights = fighters.includes(viewerPlayerId);
   for (const [pid, hero] of Object.entries(copy.heroes || {})) {
-    if (pid !== viewerPlayerId) {
-      hero.hand = hero.hand.map((c) => ({ id: c.id, hidden: true, type: c.type }));
-    }
+    if (pid === viewerPlayerId) continue;
+    if (viewerFights && fighters.includes(pid)) continue;
+    hero.hand = hero.hand.map((c) => ({ id: c.id, hidden: true, type: c.type }));
   }
   if (copy.clash?.monsterHand) {
     copy.clash.monsterHand = copy.clash.monsterHand.map((c) => ({ id: c.id, hidden: true }));

@@ -5,7 +5,6 @@ import {
   BOSSES,
   MONSTERS,
   bossHp,
-  STORIES,
   gearByTier,
 } from '../data/index.js';
 import {
@@ -35,6 +34,7 @@ import {
   themeSparkBonus,
   effectiveMonsterRank,
 } from './clash.js';
+import { bossStartCheck, bossJoinCheck } from './boss.js';
 
 /**
  * Dealer-authoritative reducer. Returns { ok, error?, state }.
@@ -126,7 +126,6 @@ export function applyAction(state, action, actorId) {
         next.bossId = next.bossId || pickRandomBoss();
         next.layoutMode = action.layoutMode === 'fixed' ? 'fixed' : 'random';
         next.decks = prepareFloorDecks();
-        next.storyStack = [];
         next.pending = null;
         // Deal 1 starting Twist to dealer (max 3)
         if (next.decks.twists.length) {
@@ -157,7 +156,7 @@ export function applyAction(state, action, actorId) {
         const stairsDist = next.map.stairsDistance ?? '?';
         appendLog(
           next,
-          `Floor 1 begins! Theme: ${theme.name}. Boss waiting: ${boss.name} (${bossHp(next.bossId, heroes.length)} HP).`,
+          `Floor 1 begins! Theme: ${theme.name}. Boss waiting: ${boss.name} (${bossHp(next.bossId, 1)} HP, +3 per extra Hero in the fight).`,
         );
         appendLog(
           next,
@@ -243,13 +242,15 @@ export function applyAction(state, action, actorId) {
         if (!to.faceUp) {
           to.faceUp = true;
           appendLog(next, `${playerName} reveals ${to.name}!`);
-          if (to.kind === 'monster' || to.kind === 'boss') {
+          if (to.kind === 'monster') {
             next.explorationActionsLeft = 0;
             startClash(next, heroPid, to);
+          } else if (to.kind === 'boss') {
+            announceBossWaiting(next, playerName, { revealed: true });
           } else if (to.kind === 'trap') {
             beginEventPrompt(next, heroPid, to);
-          } else if (to.kind === 'story') {
-            beginStoryOrMerchant(next, heroPid, to);
+          } else if (to.kind === 'merchant') {
+            beginMerchantRoom(next, to);
           } else if (to.kind === 'stairs') {
             to.cleared = true;
             if (to.locked || !next.floor?.stairsUnlocked) {
@@ -260,10 +261,12 @@ export function applyAction(state, action, actorId) {
           }
         } else if (!tiptoe) {
           appendLog(next, `${playerName} moves to ${to.name}.`);
-          // Re-enter uncleared monster/boss (e.g. after flee)
-          if ((to.kind === 'monster' || to.kind === 'boss') && !to.cleared) {
+          // Re-enter an uncleared lair (e.g. after flee). The Boss never auto-starts.
+          if (to.kind === 'monster' && !to.cleared) {
             next.explorationActionsLeft = 0;
             startClash(next, heroPid, to);
+          } else if (to.kind === 'boss' && !to.cleared) {
+            announceBossWaiting(next, playerName);
           }
         }
 
@@ -291,6 +294,31 @@ export function applyAction(state, action, actorId) {
           return fail(next, 'Not your turn');
         }
         endHeroExplorationTurn(next);
+        break;
+      }
+
+      case 'start-boss-clash': {
+        const check = bossStartCheck(next, actor, action.playerId);
+        if (!check.ok) return fail(next, check.error);
+        const caller =
+          actor.role === 'dealer' ? 'Dealer' : next.heroes[check.leadId]?.name || actor.name;
+        appendLog(
+          next,
+          `${caller} calls the Boss fight — ${check.fighterIds.length} Hero(es) step up!`,
+        );
+        next.explorationActionsLeft = 0;
+        startClash(next, check.leadId, check.tile, null, { fighterIds: check.fighterIds });
+        break;
+      }
+
+      case 'join-boss-clash': {
+        const heroPid =
+          actor.role === 'dealer' ? action.playerId : actor.role === 'hero' ? actorId : null;
+        if (!heroPid) return fail(next, 'Pick a Hero to join the Boss clash');
+        const check = bossJoinCheck(next, heroPid);
+        if (!check.ok) return fail(next, check.error);
+        next.heroes[heroPid].roomKey = next.clash.roomKey;
+        joinBossClash(next, heroPid);
         break;
       }
 
@@ -503,12 +531,6 @@ export function applyAction(state, action, actorId) {
         break;
       }
 
-      case 'dealer-log': {
-        if (actor.role !== 'dealer') return fail(next, 'Dealer only');
-        appendLog(next, `Dealer: ${String(action.message || '').slice(0, 120)}`);
-        break;
-      }
-
       case 'interact': {
         if (next.phase !== 'exploring') return fail(next, 'Not exploring');
         if (next.pending) return fail(next, 'Resolve the pending prompt first');
@@ -675,21 +697,16 @@ export function applyAction(state, action, actorId) {
         }
 
         if (pending.kind === 'event') {
-          const choice = String(action.choice || 'a').toLowerCase();
+          const choice = String(action.choice || '').toLowerCase();
+          if (choice !== 'a' && choice !== 'b') {
+            return fail(next, 'Choose A or B');
+          }
           applyEventChoice(next, hero, pending.event, choice);
           const tile = next.map.tiles.find((t) => t.key === pending.tileKey);
           if (tile) {
             tile.cleared = true;
             tile.eventResolved = true;
           }
-          next.pending = null;
-          maybeEndExplore(next);
-          break;
-        }
-
-        if (pending.kind === 'story') {
-          const choice = String(action.choice || 'a').toLowerCase();
-          applyStoryChoice(next, hero, pending.story, choice, pending.tileKey);
           next.pending = null;
           maybeEndExplore(next);
           break;
@@ -806,13 +823,14 @@ export function applyAction(state, action, actorId) {
           to.faceUp = true;
           to.cleared = !['monster', 'boss', 'trap'].includes(to.kind);
           appendLog(next, `${hero.name} reveals ${to.name} while carrying ${ally.name}.`);
-          if (to.kind === 'monster' || to.kind === 'boss') {
+          if (to.kind === 'monster') {
             // Carrying into a lair still triggers clash for the carrier
             startClash(next, heroPid, to);
             break;
           }
-          if (to.kind === 'trap') beginEventPrompt(next, heroPid, to);
-          else if (to.kind === 'story') beginStoryOrMerchant(next, heroPid, to);
+          if (to.kind === 'boss') announceBossWaiting(next, hero.name, { revealed: true });
+          else if (to.kind === 'trap') beginEventPrompt(next, heroPid, to);
+          else if (to.kind === 'merchant') beginMerchantRoom(next, to);
         } else {
           appendLog(next, `${hero.name} carries ${ally.name} to ${to.name} (2 Actions).`);
         }
@@ -859,7 +877,21 @@ function resolveHeroActor(state, actor, playerId) {
   return null;
 }
 
-function startClash(state, heroPlayerId, tile, forcedMonster = null) {
+function announceBossWaiting(state, heroName, { revealed = false } = {}) {
+  const boss = BOSSES.find((b) => b.id === state.bossId) || BOSSES[0];
+  appendLog(
+    state,
+    revealed
+      ? `${boss.name} looms in the Boss Chamber — but waits. Gather the party, then call "Start Boss fight" when ready.`
+      : `${heroName} waits in the Boss Chamber. ${boss.name} won't fight until someone calls it.`,
+  );
+}
+
+/**
+ * Open a clash. Lairs start as soon as a Hero walks in; the Boss only via `start-boss-clash`,
+ * which passes every conscious Hero in the chamber as `fighterIds` (lead first).
+ */
+function startClash(state, heroPlayerId, tile, forcedMonster = null, { fighterIds = null } = {}) {
   state.phase = 'clash';
   let monsterName = 'Mystery Critter';
   let monsterHp = 4;
@@ -870,6 +902,10 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null) {
   let traitId = null;
   let lootText = '';
   const isBoss = tile.kind === 'boss' && !forcedMonster;
+  const fighters =
+    isBoss && fighterIds?.length
+      ? [heroPlayerId, ...fighterIds.filter((id) => id !== heroPlayerId)]
+      : [heroPlayerId];
 
   if (forcedMonster) {
     monsterName = forcedMonster.name;
@@ -882,9 +918,10 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null) {
     lootText = forcedMonster.loot || '';
   } else if (isBoss) {
     const boss = BOSSES.find((b) => b.id === state.bossId) || BOSSES[0];
-    const heroCount = Object.keys(state.heroes).length;
+    // Rulebook §4.4: 12 HP + 3 per Hero beyond the first *in the fight*.
+    // Later joiners add their +3 in joinBossClash.
     monsterName = boss.name;
-    monsterHp = bossHp(boss.id, heroCount);
+    monsterHp = bossHp(boss.id, fighters.length);
     cunning = boss.cunning;
     baseDmg = boss.baseDmg;
     monsterId = boss.id;
@@ -903,10 +940,15 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null) {
     lootText = m.loot || '';
   }
 
-  const hero = state.heroes[heroPlayerId];
-  hero.perkUsedThisClash = false;
-  while (hero.hand.filter((c) => c.type !== 'cramp').length < 4 && state.decks.action.length) {
-    hero.hand.push(state.decks.action.shift());
+  for (const fid of fighters) {
+    const fighter = state.heroes[fid];
+    fighter.perkUsedThisClash = false;
+    while (
+      fighter.hand.filter((c) => c.type !== 'cramp').length < 4 &&
+      state.decks.action.length
+    ) {
+      fighter.hand.push(state.decks.action.shift());
+    }
   }
 
   const monsterHand = [];
@@ -914,14 +956,13 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null) {
     monsterHand.push(state.decks.action.shift());
   }
 
-  const heroCount = Object.keys(state.heroes).length;
   // Boss cadence: after every 2 hero turns in co-op; every hero turn in 1v1 Hard Mode.
-  const bossEvery = isBoss && heroCount > 1 ? 2 : 1;
+  const bossEvery = isBoss && fighters.length > 1 ? 2 : 1;
 
   state.clash = {
     roomKey: tile.key,
     heroPlayerId,
-    fighters: [heroPlayerId],
+    fighters,
     fighterIndex: 0,
     turnOrderDir: 1,
     heroTurnsSinceBoss: 0,
@@ -950,20 +991,21 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null) {
     negateNextMonsterHit: false,
     pendingKoboldSwings: 0,
     note: isBoss
-      ? 'Boss clash — nearby Heroes may move in to join the same pile!'
+      ? 'Boss clash — Heroes next to the Boss Chamber may still pile in on the same pile!'
       : 'Monster leads — then play matching Suit or Rank (or Wild / Desperation).',
   };
 
+  const fighterNames = fighters.map((id) => state.heroes[id].name).join(' & ');
   if (monsterHand.length) {
     const lead = monsterHand.shift();
     state.clash.monsterHand = monsterHand;
     applyLeadCard(state.clash, lead);
     appendLog(
       state,
-      `Clash! ${hero.name} vs ${monsterName} (${monsterHp} HP). ${monsterName} leads ${cardLabel(lead)}.`,
+      `Clash! ${fighterNames} vs ${monsterName} (${monsterHp} HP). ${monsterName} leads ${cardLabel(lead)}.`,
     );
   } else {
-    appendLog(state, `Clash! ${hero.name} vs ${monsterName} (${monsterHp} HP).`);
+    appendLog(state, `Clash! ${fighterNames} vs ${monsterName} (${monsterHp} HP).`);
   }
   state.clash.whoseTurn = 'hero';
   state.clash.needsDraw = true;
@@ -1641,13 +1683,15 @@ function grantClashLoot(state, hero, clash) {
 function cleanupClash(state, { victory, wasBoss, downed } = {}) {
   const clash = state.clash;
   if (!clash) return;
-  const hero = state.heroes[clash.heroPlayerId];
   const tile = state.map.tiles.find((t) => t.key === clash.roomKey);
-  // Clear cramps
-  hero.hand = hero.hand.filter((c) => !isCramp(c));
-  // Untap gear
-  if (hero.offhand) hero.offhand.tapped = false;
-  if (hero.armor) hero.armor.tapped = false;
+  // Every fighter (not just whoever held the turn) stretches out Cramp! and untaps gear.
+  for (const fid of new Set([clash.heroPlayerId, ...(clash.fighters || [])])) {
+    const fighter = state.heroes[fid];
+    if (!fighter) continue;
+    fighter.hand = fighter.hand.filter((c) => !isCramp(c));
+    if (fighter.offhand) fighter.offhand.tapped = false;
+    if (fighter.armor) fighter.armor.tapped = false;
+  }
   if (victory && tile) tile.cleared = true;
   const bossWin = Boolean(wasBoss ?? clash.isBoss) && victory;
   state.clash = null;
@@ -1693,10 +1737,7 @@ function finishFloor(state, reason) {
     hero.hand = hero.hand.filter((c) => !isCramp(c));
   }
   appendLog(state, reason);
-  appendLog(
-    state,
-    `Floor 1 complete! Conscious Heroes heal +3 HP (checkpoint). Story stack for Floor 2: ${state.storyStack.length} callback(s).`,
-  );
+  appendLog(state, 'Floor 1 complete! Conscious Heroes heal +3 HP (checkpoint).');
 }
 
 function endHeroExplorationTurn(state) {
@@ -1751,8 +1792,8 @@ function beginEventPrompt(state, heroPlayerId, tile) {
     : {
         id: 'E-00',
         title: 'Mysterious Draft',
-        prompt: 'The room feels empty. Dealer narrates.',
-        choices: ['A) Shrug and move on.', 'B) Peek nervously.', 'Or Improvise...'],
+        prompt: 'A drafty room — pick a response.',
+        choices: ['A) Shrug and move on.', 'B) Peek nervously.'],
       };
   state.pending = {
     kind: 'event',
@@ -1760,45 +1801,23 @@ function beginEventPrompt(state, heroPlayerId, tile) {
     tileKey: tile.key,
     event,
   };
-  appendLog(state, `Event: ${event.title} — choose A, B, or improvise.`);
+  appendLog(state, `Event: ${event.title} — choose A or B.`);
 }
 
-function beginStoryOrMerchant(state, heroPlayerId, tile) {
-  // Part II callbacks are for Floor 2+; still honor a non-empty storyStack if present.
-  if (state.storyStack?.length) {
-    const callbackId = state.storyStack.shift();
-    const story = STORIES.find((s) => s.id === callbackId);
-    if (story) {
-      state.pending = { kind: 'story', heroPlayerId, tileKey: tile.key, story };
-      tile.cleared = true;
-      appendLog(state, `Story Callback: ${story.name}`);
-      return;
-    }
-  }
-  const card = state.decks.storyMerchant?.length ? state.decks.storyMerchant.shift() : null;
-  if (!card) {
-    tile.cleared = true;
-    appendLog(state, 'Story/Cart room — deck empty. Safe to linger.');
-    return;
-  }
-  if (card.cardKind === 'merchant') {
-    tile.merchant = { id: card.id, name: card.name, greeting: card.greeting, deals: card.deals };
-    tile.cleared = true;
-    appendLog(state, `${card.name} sets up shop here! ${card.greeting}`);
-    return;
-  }
+function beginMerchantRoom(state, tile) {
+  const card = state.decks.merchants?.length ? state.decks.merchants.shift() : null;
   tile.cleared = true;
-  state.pending = { kind: 'story', heroPlayerId, tileKey: tile.key, story: card };
-  appendLog(state, `Story: ${card.name}`);
+  if (!card) {
+    appendLog(state, 'Merchant Cart room — no merchants left in deck.');
+    return;
+  }
+  tile.merchant = { id: card.id, name: card.name, greeting: card.greeting, deals: card.deals };
+  appendLog(state, `${card.name} sets up shop here!`);
 }
 
 function applyEventChoice(state, hero, event, choice) {
   const id = event.id;
   appendLog(state, `${hero.name} picks ${choice.toUpperCase()} on ${event.title}.`);
-  if (choice === 'improvise' || choice === 'c') {
-    drawTwist(state, 'Improvise — Dealer Twist');
-    return;
-  }
   // Structured outcomes from dungeon_floor1_2d5d.md (simplified digital adjudication)
   const bootsIgnore = hero.armor?.id === 'G-18';
   if (id === 'E-01') {
@@ -1852,68 +1871,6 @@ function applyEventChoice(state, hero, event, choice) {
     hero.hp = 0;
     hero.downed = true;
     appendLog(state, `${hero.name} collapses from the hazard!`);
-  }
-}
-
-function applyStoryChoice(state, hero, story, choice, tileKey) {
-  appendLog(state, `${hero.name} responds to ${story.name} (${choice.toUpperCase()}).`);
-  const tile = state.map.tiles.find((t) => t.key === tileKey);
-  if (tile) tile.storyResolved = true;
-
-  if (story.id === 'S-01A') {
-    if (choice === 'a') {
-      // Help Pip: give Weapon or Armor → draw 1 replacement Tier 0 starter
-      if (hero.weapon) {
-        appendLog(state, `${hero.name} gives ${hero.weapon.name} to Pip.`);
-        hero.weapon = null;
-        const starters = gearByTier(0).filter((g) => g.slot === 'weapon');
-        if (starters.length) {
-          const pick = starters[Math.floor(Math.random() * starters.length)];
-          grantLootToHero(state, hero, { gearId: pick.id, name: pick.name, slot: pick.slot });
-          appendLog(state, `Pip gifts a replacement starter: ${pick.name}.`);
-        }
-      } else if (hero.armor) {
-        appendLog(state, `${hero.name} gives ${hero.armor.name} to Pip.`);
-        hero.armor = null;
-        const starters = gearByTier(0).filter((g) => g.slot === 'armor');
-        if (starters.length) {
-          const pick = starters[Math.floor(Math.random() * starters.length)];
-          grantLootToHero(state, hero, { gearId: pick.id, name: pick.name, slot: pick.slot });
-          appendLog(state, `Pip gifts a replacement starter: ${pick.name}.`);
-        }
-      }
-      if (story.callbackId) state.storyStack.push(story.callbackId);
-      appendLog(state, `Tucked ${story.callbackId} onto the Next-Floor Story Stack (Helped).`);
-    } else if (choice === 'b') {
-      const item = drawLoot(state, 1)[0];
-      if (item) grantLootToHero(state, hero, item);
-      if (story.callbackId) state.storyStack.push(story.callbackId);
-      appendLog(state, `Tucked ${story.callbackId} (Grumpy!).`);
-    } else drawTwist(state, 'Story improvise');
-  } else if (story.id === 'S-02A') {
-    if (choice === 'a') {
-      if (hero.belt?.length) hero.belt.pop();
-      if (story.callbackId) state.storyStack.push(story.callbackId);
-      appendLog(state, `Tucked ${story.callbackId} onto the Story Stack.`);
-    } else if (choice === 'b') drawAction(state, hero);
-    else drawTwist(state, 'Story improvise');
-  } else if (story.id === 'S-03A') {
-    if (choice === 'a') {
-      if (hero.belt?.length) hero.belt.pop();
-      else {
-        // discard 2 matching suit proxy: discard 2 action cards
-        hero.hand = hero.hand.filter((c, i) => i >= 2 || isCramp(c));
-      }
-      if (story.callbackId) state.storyStack.push(story.callbackId);
-      appendLog(state, `Tucked ${story.callbackId} (Friend).`);
-    } else if (choice === 'b') {
-      drawAction(state, hero);
-      if (story.callbackId) state.storyStack.push(story.callbackId);
-      appendLog(state, `Tucked ${story.callbackId} (Snubbed).`);
-    } else drawTwist(state, 'Story improvise');
-  } else {
-    // Part II or unknown — narrate only on Floor 1
-    appendLog(state, story.scene || story.name);
   }
 }
 
@@ -2104,7 +2061,7 @@ function applyStuntSuccess(state, hero, heroPid, action = {}) {
     drawAction(state, hero);
     appendLog(state, `${hero.name} stunt finds a loose brick — draws 1 Action.`);
   } else {
-    appendLog(state, `${hero.name} pulls off the stunt! (Dealer narrates the clever edge.)`);
+    appendLog(state, `${hero.name} pulls off the stunt and draws 1 Action card.`);
     drawAction(state, hero);
   }
 }

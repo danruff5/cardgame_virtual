@@ -1,0 +1,1170 @@
+/* —— Exploration room-map table: matches Clash modal wood & emerald felt theme ——
+ *
+ *   Compact header (room, theme/boss, stairs, actions, active turn)
+ *   [Optional Dealer bar: Twists | Unlock/End Floor | Deck counts]
+ *   Table log + Room/Turn actions | Auto-scaling Map (+ Gather / Prompts) | Party + Focused Hero & Hand
+ */
+
+body.table-active {
+  --felt: rgba(52, 92, 70, 0.62);
+  --felt-deep: rgba(24, 44, 34, 0.5);
+}
+
+.table-shell,
+.table-shell.game-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0.5rem;
+  min-width: 0;
+  --left-w: clamp(230px, 19.5vw, 310px);
+  --right-w: clamp(310px, 25.5vw, 420px);
+  --table-chrome-h: 138px;
+  --seat-card-h: clamp(104px, 17vh, 168px);
+  --seat-card-w: calc(var(--seat-card-h) * 0.72);
+  --hand-card-h: clamp(112px, 19vh, 176px);
+  --hand-card-w: calc(var(--hand-card-h) * 0.72);
+  --mini-gear-h: clamp(66px, 9.5vh, 92px);
+  --mini-gear-w: calc(var(--mini-gear-h) * 0.72);
+}
+
+.table-shell.has-dealer-bar {
+  --table-chrome-h: 192px;
+}
+
+.table-shell.has-boss-bar,
+.table-shell.has-victory-bar {
+  --table-chrome-h: 214px;
+}
+
+.table-shell.has-dealer-bar.has-boss-bar,
+.table-shell.has-dealer-bar.has-victory-bar {
+  --table-chrome-h: 268px;
+}
+
+@media (min-width: 961px) {
+  html:has(> body.table-active),
+  body.table-active {
+    overflow: hidden;
+    height: 100dvh;
+    min-height: 0;
+  }
+
+  body.table-active #app {
+    max-width: min(1840px, 100%);
+    width: 100%;
+    height: 100dvh;
+    margin: 0 auto;
+    padding: clamp(0.35rem, 1vh, 0.65rem) clamp(0.45rem, 1.1vw, 1rem);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .table-shell,
+  .table-shell.game-layout {
+    height: 100%;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    align-items: stretch;
+    padding: 0.6rem 0.75rem 0.75rem;
+    border-radius: 18px;
+    border: 1px solid rgba(243, 230, 208, 0.22);
+    background:
+      linear-gradient(165deg, rgba(58, 42, 30, 0.96), rgba(28, 22, 16, 0.98)),
+      radial-gradient(ellipse at 20% 0%, rgba(196, 120, 58, 0.16), transparent 50%);
+    box-shadow: 0 24px 52px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+  }
+
+  .table-shell.has-dealer-bar,
+  .table-shell.game-layout.has-dealer-bar {
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 961px) and (max-width: 1220px) {
+  .table-shell.has-dealer-bar {
+    --table-chrome-h: 228px;
+  }
+
+  .table-shell.has-dealer-bar.has-boss-bar,
+  .table-shell.has-dealer-bar.has-victory-bar {
+    --table-chrome-h: 300px;
+  }
+}
+
+/* —— Header —— */
+.table-header {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.table-title {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.table-kicker {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #d99b66;
+}
+
+.table-header h2 {
+  margin: 0;
+  font-size: clamp(1.05rem, 2vw, 1.48rem);
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table-sub {
+  color: var(--muted);
+  font-size: 0.74em;
+  font-weight: 400;
+}
+
+.table-status {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.table-status-note {
+  margin: 0;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table-status-note.is-good {
+  color: #c4ecd0;
+  font-weight: 600;
+}
+
+.table-error-chip {
+  margin: 0;
+  padding: 0.24rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(196, 92, 74, 0.75);
+  background: rgba(120, 40, 32, 0.45);
+  color: #ffc9be;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table-pills {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.table-pills .pill.is-good {
+  border-color: rgba(111, 158, 122, 0.75);
+  color: #c4ecd0;
+}
+
+.table-turn-chip {
+  padding: 0.34rem 0.8rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  border: 1px solid rgba(243, 230, 208, 0.25);
+  background: rgba(0, 0, 0, 0.32);
+  white-space: nowrap;
+}
+
+.table-turn-chip.is-hero {
+  border-color: rgba(111, 158, 122, 0.8);
+  color: #c4ecd0;
+}
+
+.table-turn-chip.is-clash {
+  border-color: rgba(196, 92, 74, 0.8);
+  color: #ffc9be;
+}
+
+.table-turn-chip.is-victory {
+  border-color: rgba(227, 167, 35, 0.85);
+  color: #ffe4a3;
+}
+
+/* —— Slim Dealer toolbar —— */
+.dealer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem 0.75rem;
+  padding: 0.36rem 0.65rem;
+  border-radius: 12px;
+  border: 1px solid rgba(243, 230, 208, 0.14);
+  background: rgba(0, 0, 0, 0.26);
+  min-width: 0;
+}
+
+.dealer-bar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.dealer-bar button {
+  padding: 0.28rem 0.65rem;
+  font-size: 0.8rem;
+  border-radius: 8px;
+}
+
+.dealer-twist-tray {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.dealer-empty-twist {
+  font-size: 0.8rem;
+}
+
+.dealer-twist-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.18rem 0.24rem 0.18rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(217, 155, 102, 0.45);
+  background: rgba(66, 46, 28, 0.7);
+  font-size: 0.78rem;
+  z-index: 5;
+}
+
+.dealer-twist-chip:hover {
+  z-index: 65;
+}
+
+.dealer-twist-chip:hover > .card-hover-tip {
+  display: block;
+  bottom: auto;
+  top: calc(100% + 6px);
+  left: 0;
+  transform: none;
+}
+
+.dealer-twist-name {
+  font-weight: 600;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.dealer-twist-play {
+  padding: 0.14rem 0.48rem;
+  font-size: 0.74rem;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #d28a4a, #a86028);
+  color: #1a120a;
+  font-weight: 700;
+}
+
+.dealer-decks {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  color: var(--muted);
+  padding: 0.2rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid rgba(243, 230, 208, 0.1);
+  background: rgba(0, 0, 0, 0.22);
+  white-space: nowrap;
+}
+
+/* —— Felt 3-column board —— */
+.table-board {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--left-w) minmax(0, 1fr) var(--right-w);
+  gap: 0.65rem 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 14px;
+  border: 2px solid rgba(110, 76, 46, 0.9);
+  background:
+    radial-gradient(ellipse 64% 80% at 50% 50%, var(--felt), var(--felt-deep) 64%, transparent 88%),
+    linear-gradient(180deg, rgba(52, 38, 26, 0.92), rgba(24, 18, 12, 0.96));
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    inset 0 0 60px rgba(0, 0, 0, 0.35);
+}
+
+.table-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 0;
+  min-height: 0;
+}
+
+.table-zone-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.table-zone-label .muted {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.76rem;
+}
+
+/* —— Left column: top-stacked log + room/turn actions —— */
+.table-log-box {
+  flex: 1 1 0;
+  min-height: 110px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 12px;
+  border: 1px solid rgba(243, 230, 208, 0.12);
+  background: rgba(0, 0, 0, 0.34);
+  min-width: 0;
+}
+
+.table-log-box h3 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.table-shell .table-log {
+  max-height: none;
+  min-height: 0;
+  align-content: start;
+  overflow: auto;
+  overscroll-behavior: contain;
+  font-size: 0.81rem;
+  gap: 0.3rem;
+}
+
+.table-log-line {
+  line-height: 1.32;
+}
+
+.table-log-line:first-child {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.table-actions {
+  display: grid;
+  gap: 0.45rem;
+  flex: 0 0 auto;
+  max-height: 46%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.table-room-callout {
+  padding: 0.45rem 0.6rem;
+  border-radius: 10px;
+  border: 1px solid rgba(243, 230, 208, 0.12);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.table-room-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-bottom: 0.15rem;
+  font-size: 0.86rem;
+}
+
+.table-room-callout p {
+  margin: 0;
+  font-size: 0.77rem;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.table-action-btns {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.table-action-btns > button {
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.86rem;
+}
+
+.table-wait-note {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+/* —— Center column: boss gather / victory + auto-scaling map + prompt overlay —— */
+.table-col-center {
+  align-items: center;
+  justify-content: center;
+}
+
+.boss-gather-bar,
+.table-victory-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.38rem 0.6rem;
+  border-radius: 12px;
+  border: 1px solid rgba(126, 75, 181, 0.58);
+  background:
+    radial-gradient(ellipse 60% 90% at 0% 50%, rgba(126, 75, 181, 0.24), transparent 70%),
+    rgba(0, 0, 0, 0.34);
+  flex: 0 0 auto;
+}
+
+.table-victory-bar {
+  border-color: rgba(111, 158, 122, 0.7);
+  background: rgba(24, 54, 34, 0.45);
+  justify-content: center;
+}
+
+.boss-gather-mini .vcard.size-mini {
+  width: 44px;
+  height: 58px;
+  padding: 3px;
+}
+
+.boss-gather-mini .badge-pill,
+.boss-gather-mini .card-footer {
+  display: none;
+}
+
+.boss-gather-meta {
+  flex: 1 1 0;
+  min-width: 0;
+  display: grid;
+  gap: 0.1rem;
+  font-size: 0.8rem;
+}
+
+.boss-gather-hint {
+  font-size: 0.75rem;
+}
+
+.boss-gather-bar > button {
+  flex: 0 0 auto;
+  padding: 0.42rem 0.8rem;
+  font-size: 0.84rem;
+}
+
+.table-map-stage {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  display: grid;
+  place-items: center;
+  --map-avail-w: calc(min(1840px, 100vw) - var(--left-w) - var(--right-w) - 108px);
+  --map-avail-h: calc(100dvh - var(--table-chrome-h));
+}
+
+.table-shell .map-grid {
+  --tile-gap: 6px;
+  --tile-size: clamp(
+    58px,
+    min(
+      calc((var(--map-avail-h) - (var(--map-rows, 4) - 1) * var(--tile-gap)) / var(--map-rows, 4)),
+      calc((var(--map-avail-w) - (var(--map-cols, 4) - 1) * var(--tile-gap)) / var(--map-cols, 4))
+    ),
+    168px
+  );
+  gap: var(--tile-gap);
+  justify-content: center;
+  align-content: center;
+}
+
+.table-shell .map-cell {
+  width: var(--tile-size);
+  height: var(--tile-size);
+  border-radius: 11px;
+  border: 1.5px solid rgba(243, 230, 208, 0.18);
+  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.table-shell .map-cell.with-art {
+  overflow: visible;
+}
+
+.table-shell .map-tile-card.room-bleed {
+  border-radius: 9px;
+}
+
+.table-shell .map-cell.is-current {
+  border-color: #ffe4a3;
+  box-shadow:
+    0 0 0 2px rgba(255, 228, 163, 0.65),
+    0 0 18px rgba(227, 167, 35, 0.35);
+  z-index: 4;
+}
+
+.table-shell .map-cell.clickable {
+  border-color: rgba(143, 191, 154, 0.9);
+  box-shadow:
+    0 0 0 1.5px rgba(143, 191, 154, 0.85),
+    0 0 14px rgba(111, 158, 122, 0.45);
+}
+
+.table-shell .map-cell.clickable:hover {
+  transform: translateY(-2px) scale(1.02);
+  border-color: #c4ecd0;
+  box-shadow:
+    0 0 0 2px #c4ecd0,
+    0 0 20px rgba(111, 158, 122, 0.65);
+}
+
+.table-shell .map-cell.with-art:hover {
+  z-index: 40;
+}
+
+.table-shell .map-cell .map-label {
+  font-size: clamp(0.6rem, calc(var(--tile-size) * 0.095), 0.76rem);
+  padding: 2px 4px;
+  border-radius: 6px;
+  background: rgba(16, 12, 8, 0.66);
+  left: 3px;
+  right: 3px;
+  bottom: 3px;
+}
+
+.pawn-row {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  right: 4px;
+  z-index: 9;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  pointer-events: none;
+}
+
+.table-shell .pawn {
+  position: static;
+  width: clamp(15px, calc(var(--tile-size) * 0.18), 22px);
+  height: clamp(15px, calc(var(--tile-size) * 0.18), 22px);
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  font-size: clamp(0.58rem, calc(var(--tile-size) * 0.095), 0.74rem);
+  font-weight: 800;
+  color: #fffdf8;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+}
+
+.table-shell .pawn.is-active-pawn {
+  border-color: #ffe4a3;
+  box-shadow:
+    0 0 0 2px rgba(255, 228, 163, 0.75),
+    0 2px 8px rgba(0, 0, 0, 0.65);
+  transform: scale(1.08);
+}
+
+.table-shell .pawn.is-downed-pawn {
+  filter: grayscale(0.75) brightness(0.75);
+  border-style: dashed;
+}
+
+/* Sticky Door Jam indicators on blocked doorways */
+.door-jam {
+  position: absolute;
+  z-index: 10;
+  background: linear-gradient(180deg, #e09a4a, #a6571f);
+  border: 1px solid #ffe4a3;
+  border-radius: 3px;
+  box-shadow: 0 0 8px rgba(224, 154, 74, 0.7);
+  pointer-events: none;
+}
+
+.door-jam-n,
+.door-jam-s {
+  left: 26%;
+  right: 26%;
+  height: 5px;
+}
+.door-jam-n {
+  top: 0;
+}
+.door-jam-s {
+  bottom: 0;
+}
+
+.door-jam-w,
+.door-jam-e {
+  top: 26%;
+  bottom: 26%;
+  width: 5px;
+}
+.door-jam-w {
+  left: 0;
+}
+.door-jam-e {
+  right: 0;
+}
+
+/* Edge-aware map tooltips so top/side tiles never clip off-screen */
+.table-shell .map-cell[data-row="0"] .card-hover-tip {
+  bottom: auto;
+  top: calc(100% + 8px);
+}
+
+.table-shell .map-cell[data-col="0"] .card-hover-tip {
+  left: 0;
+  transform: none;
+}
+
+.table-shell .map-cell[data-col-last="true"] .card-hover-tip {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+/* —— Center felt overlay for Vault Keep-1 & Event A/B —— */
+.table-prompt-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 0.75rem;
+  border-radius: 12px;
+  background: rgba(12, 9, 6, 0.62);
+  backdrop-filter: blur(2px);
+}
+
+.table-prompt-card {
+  width: min(560px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.9rem 1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(243, 230, 208, 0.28);
+  background: linear-gradient(165deg, rgba(58, 42, 30, 0.97), rgba(28, 22, 16, 0.98));
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6);
+}
+
+.table-prompt-card.is-vault {
+  border-color: rgba(227, 167, 35, 0.6);
+}
+
+.table-prompt-card.is-event {
+  border-color: rgba(196, 92, 74, 0.6);
+}
+
+.table-prompt-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.table-prompt-head h3 {
+  margin: 0;
+}
+
+.vault-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.65rem;
+}
+
+.vault-option {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.55rem;
+  border-radius: 10px;
+  border: 1px solid rgba(243, 230, 208, 0.14);
+  background: rgba(0, 0, 0, 0.26);
+}
+
+.vault-option-card .vcard.size-hand {
+  width: 92px;
+  height: 128px;
+}
+
+.vault-option-card .badge-pill {
+  display: none;
+}
+
+.vault-option-info {
+  flex: 1 1 0;
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+}
+
+.vault-option-info button {
+  padding: 0.36rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.table-prompt-copy {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.table-prompt-choices {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.table-prompt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.table-prompt-actions button {
+  flex: 1 1 140px;
+}
+
+.table-prompt-wait {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+/* —— Right column: compact Party Switcher + Focused Hero seat & fanned hand —— */
+.table-col-right {
+  min-height: 0;
+}
+
+.party-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(74px, 1fr));
+  gap: 0.38rem;
+  flex: 0 0 auto;
+}
+
+button.party-card {
+  display: grid;
+  gap: 0.22rem;
+  padding: 0.36rem 0.48rem;
+  border-radius: 10px;
+  border: 1px solid rgba(243, 230, 208, 0.14);
+  background: rgba(0, 0, 0, 0.3);
+  text-align: left;
+  min-width: 0;
+}
+
+button.party-card.is-selected {
+  border-color: rgba(217, 155, 102, 0.85);
+  background: rgba(94, 62, 34, 0.42);
+}
+
+button.party-card.is-turn {
+  box-shadow: inset 0 0 0 1px rgba(111, 158, 122, 0.65);
+}
+
+button.party-card.is-downed {
+  opacity: 0.72;
+}
+
+.party-card-top {
+  display: flex;
+  align-items: center;
+  gap: 0.28rem;
+  min-width: 0;
+  font-size: 0.77rem;
+}
+
+.party-suit-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.party-hero-name {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.party-badge {
+  font-size: 0.62rem;
+  padding: 0.03rem 0.32rem;
+  border-radius: 999px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.party-badge.is-live {
+  background: rgba(111, 158, 122, 0.25);
+  border: 1px solid rgba(111, 158, 122, 0.8);
+  color: #c4ecd0;
+}
+
+.party-badge.is-down {
+  background: rgba(196, 92, 74, 0.25);
+  border: 1px solid rgba(196, 92, 74, 0.8);
+  color: #ffc9be;
+}
+
+.party-hp-track {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.party-hp-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #6f9e7a, #9bc7a4);
+}
+
+.party-card-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.25rem;
+  font-size: 0.68rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.hero-focus-zone {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.55rem 0.6rem;
+  border-radius: 12px;
+  border: 1px solid rgba(243, 230, 208, 0.12);
+  background: rgba(0, 0, 0, 0.28);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.hero-focus-zone.is-turn {
+  border-color: rgba(111, 158, 122, 0.72);
+  box-shadow: 0 0 20px rgba(111, 158, 122, 0.18);
+}
+
+.table-seat-row {
+  display: flex;
+  gap: 0.55rem;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.table-seat-info {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.table-seat-card {
+  flex: 0 0 auto;
+}
+
+.table-seat-card .vcard.size-hand {
+  width: var(--seat-card-w);
+  height: var(--seat-card-h);
+}
+
+.table-seat-card .badge-pill,
+.table-gear .badge-pill {
+  display: none;
+}
+
+.table-shell .vcard .card-header {
+  overflow: hidden;
+}
+
+.table-hp {
+  padding: 0.3rem 0.45rem 0.4rem;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.table-hp-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  margin-bottom: 0.22rem;
+}
+
+.table-hp-label span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-hp-track {
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.table-hp-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6f9e7a, #9bc7a4);
+  transition: width 0.3s ease;
+}
+
+.table-seat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.table-chip {
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.71rem;
+  border: 1px solid rgba(243, 230, 208, 0.2);
+  background: rgba(0, 0, 0, 0.3);
+  color: #ffe4a3;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-chip.is-warn {
+  border-color: rgba(227, 167, 35, 0.8);
+}
+
+.table-gear-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: auto;
+}
+
+.table-gear {
+  display: grid;
+  justify-items: center;
+  gap: 0.1rem;
+}
+
+.table-gear .vcard.size-mini {
+  width: var(--mini-gear-w);
+  height: var(--mini-gear-h);
+  padding: 3px;
+}
+
+.table-gear .card-title {
+  font-size: 6px;
+}
+
+.table-gear-tag {
+  font-size: 0.58rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.table-hand-zone {
+  margin-top: auto;
+  display: grid;
+  gap: 0.3rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(243, 230, 208, 0.1);
+}
+
+.table-hand-fan {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  padding-top: 6px;
+}
+
+.table-hand-slot {
+  position: relative;
+  z-index: 1;
+  flex: 0 1 calc(var(--hand-card-w) + 4px);
+  min-width: 26px;
+  transition: transform 0.15s ease;
+}
+
+.table-hand-slot:last-child {
+  flex-shrink: 0;
+}
+
+.table-hand-slot:hover {
+  z-index: 45;
+  transform: translateY(-6px);
+}
+
+.table-hand-slot .vcard.size-hand {
+  width: var(--hand-card-w);
+  height: var(--hand-card-h);
+}
+
+/* Keep right-rail tooltips inside the viewport */
+.table-col-right .vcard > .card-hover-tip {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+.table-seat-row .vcard > .card-hover-tip {
+  bottom: auto;
+  top: calc(100% + 8px);
+}
+
+/* Tuck floating help button cleanly into the corner when the tabletop fills the viewport */
+body.table-active .coach-help-btn {
+  right: 0.45rem;
+  bottom: 0.45rem;
+  width: 2.15rem;
+  height: 2.15rem;
+  font-size: 1.05rem;
+}
+
+/* —— Narrow screens / tablets & phones —— */
+@media (max-width: 960px) {
+  body.table-active #app {
+    padding: 0.65rem 0.6rem 3.5rem;
+  }
+
+  .table-header {
+    flex-wrap: wrap;
+    gap: 0.45rem 0.7rem;
+  }
+
+  .table-header h2,
+  .table-status-note,
+  .dealer-decks {
+    white-space: normal;
+  }
+
+  .table-pills {
+    flex-wrap: wrap;
+  }
+
+  .table-board {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    padding: 0.6rem;
+  }
+
+  .table-col {
+    display: contents;
+  }
+
+  .table-victory-bar,
+  .boss-gather-bar {
+    order: 1;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+  }
+
+  .table-map-stage {
+    order: 1;
+    flex: 0 0 auto;
+    min-height: auto;
+    width: 100%;
+    --map-avail-w: calc(100vw - 48px);
+  }
+
+  .table-actions {
+    order: 2;
+    flex: 0 0 auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .party-strip {
+    order: 3;
+    flex: 0 0 auto;
+  }
+
+  .hero-focus-zone {
+    order: 4;
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+    --seat-card-h: clamp(92px, 16vh, 134px);
+    --hand-card-h: clamp(96px, 17vh, 140px);
+    --mini-gear-h: 60px;
+  }
+
+  .table-log-box {
+    order: 5;
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+
+  .table-shell .table-log {
+    max-height: 30vh;
+  }
+
+  .table-shell .map-grid {
+    --tile-gap: 4px;
+    --tile-size: clamp(
+      44px,
+      calc((100vw - 56px - (var(--map-cols, 4) - 1) * var(--tile-gap)) / var(--map-cols, 4)),
+      118px
+    );
+  }
+
+  .table-prompt-overlay {
+    position: fixed;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-shell *,
+  .table-shell *::before,
+  .table-shell *::after {
+    transition-duration: 0.01ms !important;
+  }
+}

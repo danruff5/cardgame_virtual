@@ -59,7 +59,6 @@ function makeTile(room, x, y, rotation = 0) {
     hallwayEchoUsed: false,
     merchant: null,
     eventResolved: false,
-    storyResolved: false,
   };
 }
 

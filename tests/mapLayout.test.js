@@ -75,7 +75,7 @@ describe('layout constraints (rulebook §2)', () => {
     expect(kinds.filter((k) => k === 'vault')).toHaveLength(3);
     expect(kinds.filter((k) => k === 'shrine')).toHaveLength(1);
     expect(kinds.filter((k) => k === 'trap')).toHaveLength(2);
-    expect(kinds.filter((k) => k === 'story')).toHaveLength(1);
+    expect(kinds.filter((k) => k === 'merchant')).toHaveLength(1);
   });
 
   it('fixed snake is connected and stairs are ≥3 steps from entrance', () => {

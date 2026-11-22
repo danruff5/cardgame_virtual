@@ -68,7 +68,9 @@ Or edit defaults in `src/net/peerConfig.js` and rebuild. See comments there.
 - Lobby: host/join, hero picks, theme/boss, **auto-random or fixed room layout**
 - Exploration: doorway-aware move (Pip half-moves), vault loot, sanctuary rest/revive, trap events, story/merchant, hallway echo, belt potions, **stunts**, **carry downed ally**
 - Clash & Chain: Suit/Rank/Wild/Cramp, **per-card Desperation**, monster/boss **traits**, hero **perks**, gear triggers, post-POOF loot, **Second Wind** charm
-- Boss co-op: join mid-clash, Boss acts every 2 hero turns, Bounce Back flips order
+- Clash table: full-screen card table — monster hand top-centre, monster card + stats top-right, deck · pile · Desperation in the middle, your hand bottom-centre, hero card + gear bottom-right; co-op partners sit smaller and face-up on the side rails. Cards fly for deals, plays, draws, discards and the cleanup sweep
+- Boss waits: finding or entering the Boss Chamber never starts the fight. The dealer (or any Hero standing in the chamber) presses **Start Boss fight** once the party has gathered; every conscious Hero in the chamber fights from the start (Boss HP 12 + 3 per extra Hero in the fight)
+- Boss co-op: Heroes one doorway away can **Join the fight** mid-clash (+3 Boss HP each), Boss acts every 2 hero turns, Bounce Back flips order
 - Dealer twists: Musical Rooms, Sticky Door Jam, Hall Monitor, Espresso, Untied Laces, Surprise Intern
 - Themes: T-03 Spark +1 damage wired; T-01/T-02 via twists/stunts
 - Victory checkpoint: +3 HP heal; Part I stories tuck Part II onto `storyStack`

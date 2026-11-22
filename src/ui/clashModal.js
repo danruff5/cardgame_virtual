@@ -3,48 +3,85 @@ import {
   renderCardBack,
   renderHeroCard,
   renderMonsterCard,
+  renderGearChip,
+  renderCompositorCard,
   tipDataForActionCard,
   renderCardMention,
 } from './cardView.js';
-import { SUIT_META } from '../data/artMeta.js';
+import { ASSET, SUIT_META } from '../data/artMeta.js';
 import { DESPERATION } from '../data/desperation.js';
 import { isLegalPlay, isCramp, heroHasLegalPlay } from '../game/clash.js';
+import { bossJoinCheck } from '../game/boss.js';
+import {
+  clashFighters,
+  clashSeats,
+  snapClash,
+  diffClashMoves,
+  openingDealMoves,
+  clashOutcome,
+  closingClashState,
+} from './clashMoves.js';
+import { captureFly, playFly, playCleanupSweep, prefersReducedMotion } from './clashAnim.js';
+
+const NO_FX = {
+  heroDelta: 0,
+  heroDeltas: {},
+  monsterDelta: 0,
+  pileAnim: false,
+  hitFlash: false,
+  turnChanged: false,
+};
 
 /**
- * Diff HP / pile against last paint so CSS flash/arrive classes fire once per change.
+ * Diff HP / pile / turn against the last paint so flash, float and banner classes fire
+ * once per change. HP is tracked per fighter so a turn hand-off never fakes a delta.
  */
 export function consumeClashFx(session, state) {
   const clash = state?.clash;
   const fx = session.clashFx || (session.clashFx = {});
   if (!clash) {
     fx.prevHeroHp = null;
+    fx.prevHps = null;
     fx.prevMonsterHp = null;
     fx.prevTopId = null;
     fx.prevPileLen = null;
-    return { heroDelta: 0, monsterDelta: 0, pileAnim: false, hitFlash: false };
+    fx.prevTurn = null;
+    return { ...NO_FX };
   }
-  const hero = state.heroes[clash.heroPlayerId];
-  const heroHp = hero?.hp ?? 0;
+  const prevHps = fx.prevHps || {};
+  const hps = {};
+  const heroDeltas = {};
+  for (const pid of clashFighters(clash)) {
+    const hp = state.heroes?.[pid]?.hp ?? 0;
+    hps[pid] = hp;
+    heroDeltas[pid] = prevHps[pid] != null ? hp - prevHps[pid] : 0;
+  }
   const monHp = clash.monsterHp;
   const topId = clash.topCard?.id ?? null;
   const pileLen = clash.pile?.length ?? 0;
+  const turn = `${clash.whoseTurn}:${clash.heroPlayerId}`;
 
-  const heroDelta = fx.prevHeroHp != null ? heroHp - fx.prevHeroHp : 0;
+  const heroDelta = heroDeltas[clash.heroPlayerId] ?? 0;
   const monsterDelta = fx.prevMonsterHp != null ? monHp - fx.prevMonsterHp : 0;
   const pileAnim =
     (fx.prevTopId != null && topId !== fx.prevTopId) ||
     (fx.prevPileLen != null && pileLen > fx.prevPileLen);
+  const turnChanged = fx.prevTurn != null && fx.prevTurn !== turn;
 
-  fx.prevHeroHp = heroHp;
+  fx.prevHps = hps;
+  fx.prevHeroHp = hps[clash.heroPlayerId] ?? 0;
   fx.prevMonsterHp = monHp;
   fx.prevTopId = topId;
   fx.prevPileLen = pileLen;
+  fx.prevTurn = turn;
 
   return {
     heroDelta,
+    heroDeltas,
     monsterDelta,
     pileAnim,
-    hitFlash: heroDelta < 0 || monsterDelta < 0,
+    turnChanged,
+    hitFlash: monsterDelta < 0 || Object.values(heroDeltas).some((d) => d < 0),
   };
 }
 
@@ -134,7 +171,7 @@ function cardIsLegal(c, clash, playOpts, hasCookie) {
   );
 }
 
-function hpMeter({ label, hp, maxHp, delta, kind }) {
+function hpMeter({ label, hp, maxHp, delta = 0, kind }) {
   const pct = maxHp > 0 ? Math.max(0, Math.min(100, Math.round((hp / maxHp) * 100))) : 0;
   const deltaClass = delta < 0 ? 'hp-delta-down' : delta > 0 ? 'hp-delta-up' : '';
   const flashClass = delta < 0 ? 'hp-flash-hurt' : delta > 0 ? 'hp-flash-heal' : '';
@@ -155,63 +192,179 @@ function hpMeter({ label, hp, maxHp, delta, kind }) {
     </div>`;
 }
 
-function monsterHandBacks(count) {
-  const n = Math.max(0, Number(count) || 0);
-  const show = Math.min(n, 5);
-  if (!n) {
-    return `<div class="clash-monster-hand empty"><span class="muted">No cards</span></div>`;
+/** One card on the table, tagged so clashAnim can fly it between renders. */
+function flyCard(card, { size = 'hand' } = {}) {
+  const back = !card || card.hidden;
+  const tag = card?.id != null ? `data-fly="c:${escAttr(card.id)}"` : '';
+  return `<span class="clash-fly" ${tag} ${back ? 'data-fly-back' : ''}>${renderActionCard(card, { size })}</span>`;
+}
+
+function stackCount(n) {
+  return n == null ? '' : `<span class="clash-stack-count" aria-label="${n} cards">${n}</span>`;
+}
+
+function monsterHandFan(clash) {
+  const hand = clash.monsterHand || [];
+  if (!hand.length) {
+    return `<div class="clash-monster-hand empty" data-fly="z:monster-hand"><span class="muted">No cards</span></div>`;
   }
-  const backs = Array.from({ length: show }, (_, i) => {
-    const offset = (i - (show - 1) / 2) * 18;
-    return `<div class="clash-back-slot" style="--fan:${offset}px">${renderCardBack({ kind: 'action', size: 'mini' })}</div>`;
-  }).join('');
+  const backs = hand
+    .map((c) => `<div class="clash-back-slot">${flyCard({ id: c.id, hidden: true }, { size: 'mini' })}</div>`)
+    .join('');
   return `
-    <div class="clash-monster-hand" title="${n} cards in monster hand">
+    <div class="clash-monster-hand" data-fly="z:monster-hand" title="${hand.length} cards in monster hand">
       <div class="clash-back-fan">${backs}</div>
-      <span class="clash-hand-count" aria-label="${n} cards">${n}</span>
+      ${stackCount(hand.length)}
     </div>`;
 }
 
-function pileStack(clash, pileAnim) {
-  const pile = clash.pile || [];
-  const under = pile.length > 1 ? pile[pile.length - 2] : null;
+/** Stable little tilt per card so the pile looks tossed, not stacked by a machine. */
+function tiltFor(id) {
+  let h = 0;
+  for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) % 997;
+  return (h % 19) - 9;
+}
+
+function pileStack(clash) {
+  const pile = clash.pile?.length ? clash.pile : clash.topCard ? [clash.topCard] : [];
+  if (!pile.length) {
+    return `<div class="clash-pile" data-fly="z:pile"><div class="clash-pile-empty muted">Clash pile</div></div>`;
+  }
+  const shown = pile.slice(-4);
+  const cards = shown
+    .map((c, i) => {
+      const top = i === shown.length - 1;
+      const tilt = top ? Math.round(tiltFor(c.id) / 3) : tiltFor(c.id);
+      return `<div class="clash-pile-card ${top ? 'is-top' : ''}" style="--tilt:${tilt}deg">${flyCard(c)}</div>`;
+    })
+    .join('');
+  return `<div class="clash-pile" data-fly="z:pile">${cards}</div>`;
+}
+
+function desperationCard(card) {
+  const art =
+    card.tier === 'miracle'
+      ? 'art_desp_miracle.png'
+      : card.tier === 'neutral'
+        ? 'art_desp_scrappy.png'
+        : 'art_desp_mishap.png';
+  return renderCompositorCard({
+    id: card.id,
+    title: card.title,
+    badge: String(card.tier || '').toUpperCase(),
+    accent: '#D96B27',
+    frame: 'frame_desperation.png',
+    art,
+    icon: 'icon_tuck_arrow.png',
+    glyph: SUIT_META.wild.glyph,
+    tipRules: `${card.outcome || ''} ${card.reset || ''}`.trim(),
+    tipFlavor: card.flavor,
+    size: 'mini',
+    compact: true,
+    extraClass: 'card-desperation',
+  });
+}
+
+function desperationBack() {
+  return `<div class="vcard card-back size-mini clash-desp-back" title="Desperation Deck">
+    <img class="layer-frame" src="${ASSET.frames('back_desperation.png')}" alt="" onerror="this.style.display='none'">
+    <div class="card-content">
+      <div class="card-back-inner">
+        <div style="color:#FFE4A3;font-size:8px">DESPERATION</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function gearSlot(item, label) {
+  if (!item) return '';
+  return `<div class="clash-gear ${item.tapped ? 'is-tapped' : ''}">
+    ${renderGearChip(item.id, { size: 'mini' })}
+    <span class="clash-gear-tag">${esc(label)}${item.tapped ? ' · tapped' : ''}</span>
+  </div>`;
+}
+
+function heroGear(hero) {
+  const slots = [
+    gearSlot(hero?.weapon, 'Weapon'),
+    gearSlot(hero?.offhand, 'Off-hand'),
+    gearSlot(hero?.armor, 'Armour'),
+    ...(hero?.belt || []).map((b) => gearSlot(b, 'Belt')),
+  ].join('');
+  return slots ? `<div class="clash-gear-row">${slots}</div>` : '';
+}
+
+/** Co-op partner on a side rail: small portrait, HP, and their hand (face-up when shared). */
+function allySeat(state, pid, { isTurn, delta, joined, closing }) {
+  const hero = state.heroes?.[pid];
+  if (!hero) return '';
+  const player = state.players?.find((p) => p.id === pid);
+  const hand = hero.hand || [];
+  const cards = hand
+    .map((c) => `<div class="clash-mini">${flyCard(c, { size: 'mini' })}</div>`)
+    .join('');
   return `
-    <div class="clash-pile ${pileAnim ? 'pile-arrive' : ''}">
-      ${under ? `<div class="clash-pile-under">${renderActionCard(under, { size: 'hand' })}</div>` : ''}
-      <div class="clash-pile-top">
-        ${
-          clash.topCard
-            ? renderActionCard(clash.topCard, { size: 'hand' })
-            : `<div class="clash-pile-empty muted">Clash pile</div>`
-        }
+    <div class="clash-ally ${isTurn ? 'is-turn' : ''} ${joined ? 'is-joining' : ''} ${hero.downed && closing ? 'is-downed-seat' : ''}"
+      data-ally="${escAttr(pid)}">
+      <div class="clash-ally-head">
+        <div class="clash-ally-portrait ${delta < 0 ? 'is-hit' : ''}">${renderHeroCard(hero.heroId, { size: 'mini', downed: hero.downed })}</div>
+        <div class="clash-ally-info">
+          <div class="clash-ally-name">
+            <strong>${esc(hero.name)}</strong>
+            ${isTurn ? '<span class="clash-chip is-live">Playing</span>' : ''}
+          </div>
+          ${player?.name && player.name !== hero.name ? `<span class="muted clash-ally-player">${esc(player.name)}</span>` : ''}
+          ${hpMeter({ label: 'HP', hp: hero.hp ?? 0, maxHp: hero.maxHp ?? 10, delta, kind: 'hero' })}
+        </div>
+      </div>
+      <div class="clash-ally-hand" data-fly="z:seat:${escAttr(pid)}" title="${hand.length} cards">
+        ${cards || '<span class="muted">Empty hand</span>'}
       </div>
     </div>`;
 }
 
+const OUTCOME_TEXT = {
+  victory: (clash) => ({ title: 'POOF!', sub: `${clash.monsterName} is defeated` }),
+  flee: () => ({ title: 'Slipped away!', sub: 'The clash is over — for now' }),
+  downed: () => ({ title: 'DOWNED!', sub: 'The clash is lost' }),
+  ended: () => ({ title: 'Clash over', sub: '' }),
+};
+
 /**
- * Full-screen clash modal — card table layout over exploration UI.
- * Preserves co-op boss fighters / bossEvery / perk & gear play options from release/floor1.
+ * Full-screen clash modal — a card table.
+ *
+ *   log / left partners | monster hand (top)   | monster card + stats
+ *                       | deck · PILE · desp.  | right partners
+ *   actions             | hero hand (bottom)   | hero card + gear
+ *
+ * A fighting hero always sees their own hand at the bottom; the dealer (and spectators)
+ * see whoever holds the hero turn there. Other fighters sit small on the side rails.
  */
 export function renderClashModal(state, isDealer, meId, fx = {}) {
   const clash = state.clash;
   if (!clash) return '';
 
-  const hero = state.heroes[clash.heroPlayerId];
-  const isMyClash = meId === clash.heroPlayerId;
-  const canPlay = clash.whoseTurn === 'hero' && (isMyClash || isDealer);
-  const canMonster = isDealer && clash.whoseTurn === 'monster';
+  const closing = fx.closing || null;
+  const { mainId, left, right, fighters } = clashSeats(state, isDealer, meId);
+  const hero = state.heroes[mainId];
+  const turnHero = state.heroes[clash.heroPlayerId];
+  const heroTurn = clash.whoseTurn === 'hero';
+  const mainHasTurn = heroTurn && mainId === clash.heroPlayerId;
+  const isMine = meId === mainId;
+  const canPlay = !closing && mainHasTurn && (isMine || isDealer);
+  const canMonster = !closing && isDealer && clash.whoseTurn === 'monster';
+  const showHand = isMine || isDealer;
   const activeMeta = SUIT_META[clash.activeSuit] || null;
   const activeColor = activeMeta?.color || '#888';
   const fighterHand = hero?.hand || [];
-  const showHand = isMyClash || isDealer;
   const playOpts = clashPlayOptionsFor(hero);
   const hasCookie = Boolean(playOpts.forceParry);
   const confettiIdx = (hero?.belt || []).findIndex((b) => b.id === 'G-29');
-  const fighterNames = (clash.fighters || [clash.heroPlayerId])
-    .map((pid) => state.heroes[pid]?.name || pid)
-    .join(', ');
-  const heroDelta = fx.heroDelta || 0;
+  const fighterNames = fighters.map((pid) => state.heroes[pid]?.name || pid);
+  const heroDeltas = fx.heroDeltas || {};
+  const mainDelta = heroDeltas[mainId] ?? (mainId === clash.heroPlayerId ? fx.heroDelta || 0 : 0);
   const monsterDelta = fx.monsterDelta || 0;
+  const joined = fx.joined || [];
   const combatLines = (state.log || [])
     .filter((l) =>
       /clash|strike|parry|guard|daze|bounce|tucker|desperation|fumble|poof|dmg|hp|cramp|wild|hits|glancing|leads|monster|downed|boss|fighter/i.test(
@@ -220,183 +373,306 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
     )
     .slice(0, 14);
 
-  const titleHeroes =
-    clash.isBoss && (clash.fighters?.length || 1) > 1
-      ? fighterNames
-      : hero?.name || 'Hero';
+  const turnLabel = heroTurn
+    ? meId === clash.heroPlayerId
+      ? 'Your turn'
+      : `${turnHero?.name || 'Hero'}'s turn`
+    : `${clash.monsterName}'s turn`;
+
+  // —— Actions tray (bottom-left) ——
+  const joinHtml = (() => {
+    if (!clash.isBoss || closing) return '';
+    const outsiders = Object.keys(state.heroes || {}).filter((pid) => !fighters.includes(pid));
+    if (isDealer) {
+      return outsiders
+        .filter((pid) => bossJoinCheck(state, pid).ok)
+        .map(
+          (pid) =>
+            `<button type="button" data-clash-join="${escAttr(pid)}">Bring in ${esc(state.heroes[pid].name)} (+3 Boss HP)</button>`,
+        )
+        .join('');
+    }
+    if (!outsiders.includes(meId)) return '';
+    const check = bossJoinCheck(state, meId);
+    return check.ok
+      ? `<button class="primary" type="button" data-clash-join="${escAttr(meId)}">Join the fight (+3 Boss HP)</button>`
+      : `<p class="muted clash-tray-note">${esc(check.error)}</p>`;
+  })();
+
+  const noLegal =
+    canPlay &&
+    !heroHasLegalPlay(hero, clash, playOpts) &&
+    !(hasCookie && fighterHand.some((c) => !isCramp(c)));
 
   const actionsHtml = `
-            <div class="clash-actions row" style="flex-wrap:wrap">
-              ${
-                canPlay
-                  ? `
-                <button type="button" id="btn-clash-desperation">Flip Desperation</button>
-                <button type="button" id="btn-clash-cramp" ${fighterHand.some((c) => isCramp(c)) ? '' : 'disabled'}>Stretch (discard ≤2 Cramp!)</button>
-                ${
-                  hasCookie
-                    ? `<label class="muted" style="display:inline-flex;gap:0.35rem;align-items:center">
-                        <input type="checkbox" id="chk-cookie-parry" /> Tap Cookie-Tin as Parry
-                      </label>`
-                    : ''
-                }
-                ${
-                  confettiIdx >= 0
-                    ? `<button type="button" data-clash-belt="${confettiIdx}" data-belt-mode="daze">Confetti Bomb — Daze</button>
-                       <button type="button" data-clash-belt="${confettiIdx}" data-belt-mode="flee">Confetti Bomb — Flee</button>`
-                    : ''
-                }
-                ${
-                  !heroHasLegalPlay(hero, clash, playOpts) &&
-                  !(hasCookie && fighterHand.some((c) => !isCramp(c)))
-                    ? '<span class="muted">No legal plays — Desperation recommended.</span>'
-                    : ''
-                }
-              `
-                  : ''
-              }
-              ${
-                canMonster
-                  ? `<button class="primary" type="button" id="btn-clash-monster">Resolve monster turn</button>
-                     <span class="muted">Monster hand: ${clash.monsterHand?.length ?? 0} cards</span>`
-                  : ''
-              }
-              ${
-                isDealer
-                  ? `<button type="button" id="btn-clash-win">Force POOF!</button>
-                     <button type="button" id="btn-clash-flee">Force flee</button>`
-                  : ''
-              }
-              ${
-                !canPlay && !canMonster && clash.whoseTurn === 'monster'
-                  ? `<p class="muted" data-coach="clash-wait">Waiting for dealer to resolve the monster turn…</p>`
-                  : ''
-              }
-              ${
-                !canPlay && clash.whoseTurn === 'hero' && !isMyClash
-                  ? `<p class="muted" data-coach="clash-wait">Waiting for ${esc(hero?.name || 'hero')} to play…</p>`
-                  : ''
-              }
-            </div>`;
-
-  const handHtml = showHand
-    ? `<div class="clash-hand-block">
-        <div class="clash-zone-label">Your hand ${
-          clash.needsDraw && canPlay ? '<span class="muted">(draws 1 on play)</span>' : ''
-        }</div>
+    <div class="clash-actions">
+      ${fx.error ? `<p class="clash-error" role="alert">${esc(fx.error)}</p>` : ''}
+      ${
+        canPlay
+          ? `
+        <button type="button" id="btn-clash-desperation" class="${noLegal ? 'primary' : ''}">Flip Desperation</button>
+        <button type="button" id="btn-clash-cramp" ${fighterHand.some((c) => isCramp(c)) ? '' : 'disabled'}>Stretch (discard ≤2 Cramp!)</button>
         ${
-          hero?.perk && !hero.perkUsedThisClash
-            ? `<p class="muted" style="margin:0 0 0.35rem;text-align:center">Perk ready: ${esc(hero.perk.name)} — ${esc(hero.perk.text)}</p>`
+          hasCookie
+            ? `<label class="muted clash-check">
+                <input type="checkbox" id="chk-cookie-parry" /> Tap Cookie-Tin as Parry
+              </label>`
             : ''
         }
-        <div class="vcard-row hand clash-player-hand">
-          ${
-            fighterHand
-              .map((c) => {
-                const legal = canPlay && cardIsLegal(c, clash, playOpts, hasCookie);
-                const cramp = isCramp(c);
-                return `<button type="button" class="clash-card-btn ${legal ? 'legal' : ''} ${cramp ? 'is-cramp' : ''}"
-                  data-clash-card="${escAttr(c.id)}"
-                  ${legal ? '' : 'disabled'}
-                  title="${legal ? 'Play onto Clash Pile' : cramp ? 'Cramp! — use Stretch instead' : 'Illegal vs active Suit/Rank'}">
-                  ${renderActionCard(c, { size: 'hand' })}
-                </button>`;
-              })
-              .join('') || '<span class="muted">Empty hand</span>'
-          }
-        </div>
-      </div>`
-    : `<p class="muted clash-hand-private">${esc(hero?.name || 'Hero')}'s hand is private.</p>`;
+        ${
+          confettiIdx >= 0
+            ? `<button type="button" data-clash-belt="${confettiIdx}" data-belt-mode="daze">Confetti Bomb — Daze</button>
+               <button type="button" data-clash-belt="${confettiIdx}" data-belt-mode="flee">Confetti Bomb — Flee</button>`
+            : ''
+        }
+        ${noLegal ? '<p class="muted clash-tray-note">No legal plays — Desperation recommended.</p>' : ''}
+      `
+          : ''
+      }
+      ${
+        !closing && heroTurn && !canPlay
+          ? `<p class="muted clash-tray-note" data-coach="clash-wait">Waiting for ${esc(turnHero?.name || 'hero')} to play…</p>`
+          : ''
+      }
+      ${joinHtml}
+      ${
+        isDealer && !closing
+          ? `<div class="clash-dealer-row">
+              <span class="clash-zone-label">Dealer</span>
+              <button type="button" id="btn-clash-win">Force POOF!</button>
+              <button type="button" id="btn-clash-flee">Force flee</button>
+            </div>`
+          : ''
+      }
+    </div>`;
+
+  // —— Bottom-centre hand ——
+  const handLabel = showHand
+    ? isMine
+      ? 'Your hand'
+      : `${hero?.name || 'Hero'}'s hand`
+    : `${hero?.name || 'Hero'}'s hand`;
+  const handCards = fighterHand
+    .map((c) => {
+      if (!showHand) {
+        return `<div class="clash-card-btn is-private">${flyCard({ id: c.id, hidden: true })}</div>`;
+      }
+      const legal = canPlay && cardIsLegal(c, clash, playOpts, hasCookie);
+      const cramp = isCramp(c);
+      return `<button type="button" class="clash-card-btn ${legal ? 'legal' : ''} ${cramp ? 'is-cramp' : ''}"
+        data-clash-card="${escAttr(c.id)}"
+        ${legal ? '' : 'disabled'}
+        title="${legal ? 'Play onto Clash Pile' : cramp ? 'Cramp! — use Stretch instead' : canPlay ? 'Illegal vs active Suit/Rank' : 'Not your turn'}">
+        ${flyCard(c)}
+      </button>`;
+    })
+    .join('');
+  const handHtml = `
+    <div class="clash-hand-block ${mainHasTurn && !closing ? 'is-turn' : ''}">
+      <div class="clash-zone-label">
+        ${esc(handLabel)}
+        ${clash.needsDraw && canPlay ? '<span class="muted">· draws 1 on play</span>' : ''}
+        ${
+          showHand && hero?.perk && !hero.perkUsedThisClash
+            ? `<span class="clash-perk" title="${escAttr(hero.perk.text)}">Perk ready: ${esc(hero.perk.name)}</span>`
+            : ''
+        }
+      </div>
+      ${showHand ? '' : `<p class="muted clash-hand-private">${esc(hero?.name || 'Hero')}'s hand is private.</p>`}
+      <div class="clash-player-hand" data-fly="z:seat:${escAttr(mainId)}">
+        ${handCards || '<span class="muted">Empty hand</span>'}
+      </div>
+    </div>`;
+
+  // —— Side rails ——
+  const seat = (pid) =>
+    allySeat(state, pid, {
+      isTurn: heroTurn && pid === clash.heroPlayerId && !closing,
+      delta: heroDeltas[pid] || 0,
+      joined: joined.includes(pid),
+      closing,
+    });
+  const leftSeats = left.map(seat).join('');
+  const rightSeats = right.map(seat).join('');
+
+  // —— Monster side (top) ——
+  const monsterChips = [
+    `<span class="clash-chip">Cunning ${clash.cunning ?? '?'}</span>`,
+    `<span class="clash-chip">Dmg ${clash.baseDmg ?? 1}</span>`,
+    clash.monsterDazed ? '<span class="clash-chip is-warn">Dazed</span>' : '',
+    clash.pendingKoboldSwings > 0
+      ? `<span class="clash-chip is-warn">${clash.pendingKoboldSwings} free swings</span>`
+      : '',
+    clash.isBoss ? `<span class="clash-chip">Acts every ${clash.bossEvery || 1} hero turn(s)</span>` : '',
+  ].join('');
+  const monsterTurnHtml = canMonster
+    ? `<button class="primary clash-monster-go" type="button" id="btn-clash-monster">Resolve monster turn</button>`
+    : !closing && clash.whoseTurn === 'monster'
+      ? `<p class="muted clash-tray-note" data-coach="clash-wait">Waiting for dealer to resolve the monster turn…</p>`
+      : '';
+
+  const heroChips = [
+    clash.heroDazed && mainId === clash.heroPlayerId ? '<span class="clash-chip is-warn">Dazed</span>' : '',
+    clash.negateNextMonsterHit ? '<span class="clash-chip is-good">Ducking</span>' : '',
+    hero?.downed ? '<span class="clash-chip is-warn">Downed</span>' : '',
+  ].join('');
+
+  const decks = state.decks || {};
+  const lastDesp = clash.lastDesperation;
+  const outcome = closing ? (OUTCOME_TEXT[closing] || OUTCOME_TEXT.ended)(clash) : null;
+
+  const backdropClasses = [
+    'clash-modal-backdrop',
+    fx.entering ? 'is-entering' : '',
+    fx.hitFlash ? 'clash-screen-hit' : '',
+    closing ? `is-closing outcome-${closing}` : '',
+  ].join(' ');
 
   return `
-    <div class="clash-modal-backdrop ${fx.hitFlash ? 'clash-screen-hit' : ''}" role="dialog" aria-modal="true" aria-label="Clash & Chain">
-      <div class="clash-modal">
+    <div class="${backdropClasses}" role="dialog" aria-modal="true" aria-label="Clash & Chain">
+      <div class="clash-modal ${clash.isBoss ? 'is-boss' : ''}">
         <header class="clash-modal-header">
-          <div>
+          <div class="clash-title">
             <p class="clash-kicker">${clash.isBoss ? 'Floor Boss' : 'Clash & Chain'}</p>
-            <h2>${esc(titleHeroes)} vs ${esc(clash.monsterName)}</h2>
-            <p class="muted clash-note">${esc(clash.note || '')}</p>
-            ${
-              clash.isBoss
-                ? `<p class="muted" style="margin:0.25rem 0 0">Fighters: ${esc(fighterNames)} · Boss acts every ${clash.bossEvery || 1} hero turn(s)</p>`
-                : ''
-            }
+            <h2>${esc(fighterNames.join(' & '))} <span class="clash-vs">vs</span> ${esc(clash.monsterName)}</h2>
           </div>
-          <div class="clash-active-pill" style="--active:${activeColor}">
-            <span class="muted">Active</span>
-            <strong>${esc(activeMeta?.label || clash.activeSuit || '—')} ${clash.activeRank ?? ''}</strong>
-            <span class="clash-turn-chip">${
-              clash.whoseTurn === 'hero'
-                ? esc(hero?.name || 'Hero')
-                : esc(clash.monsterName)
-            }'s turn</span>
+          <p class="muted clash-note">${esc(clash.note || '')}</p>
+          <div class="clash-turn-chip ${heroTurn ? 'is-hero' : 'is-monster'} ${fx.turnChanged ? 'just-changed' : ''}">
+            ${esc(turnLabel)}
           </div>
         </header>
 
         <div class="clash-modal-body">
-          <div class="clash-table">
-            <section class="clash-zone clash-zone-monster">
-              <div class="clash-zone-label">Dealer / Monster</div>
-              ${monsterHandBacks(clash.monsterHand?.length ?? 0)}
-              <div class="clash-monster-row">
-                ${renderMonsterCard(clash.monsterId, {
-                  size: 'hand',
-                  hp: clash.monsterHp,
-                  maxHp: clash.monsterMaxHp,
-                  isBoss: clash.isBoss,
-                })}
-                ${hpMeter({
-                  label: clash.monsterName,
-                  hp: clash.monsterHp,
-                  maxHp: clash.monsterMaxHp,
-                  delta: monsterDelta,
-                  kind: 'monster',
-                })}
-              </div>
-              ${clash.trait ? `<p class="muted clash-trait">${esc(clash.trait)}</p>` : ''}
-            </section>
-
-            <section class="clash-zone clash-zone-mid">
-              <div class="clash-mid-stage ${fx.pileAnim ? 'stage-pulse' : ''}" data-coach="clash-pile">
-                ${pileStack(clash, fx.pileAnim)}
-                <div class="clash-mid-meta">
-                  <div class="pill" style="border-color:${activeColor}">
-                    Suit/Rank pressure: <strong style="color:${activeColor}">${esc(clash.activeSuit || '—')} ${clash.activeRank ?? ''}</strong>
-                  </div>
-                  <div class="muted">Pile ${clash.pile?.length ?? 0} · Base hit ${clash.baseDmg ?? 1}</div>
+          <div class="clash-table" data-turn="${heroTurn ? 'hero' : 'monster'}">
+            <div class="clash-col clash-col-left">
+              <aside class="clash-combat-log">
+                <h3>Combat log</h3>
+                <div class="log clash-log">
+                  ${
+                    combatLines.map((l) => `<div class="clash-log-line">${formatCombatLogLine(l)}</div>`).join('') ||
+                    '<div class="muted">Combat lines appear here.</div>'
+                  }
                 </div>
-              </div>
-            </section>
-
-            <section class="clash-zone clash-zone-hero">
-              <div class="clash-zone-label">Hero</div>
-              <div class="clash-hero-row">
-                ${renderHeroCard(hero?.heroId, { size: 'hand', downed: hero?.downed })}
-                ${hpMeter({
-                  label: hero?.name || 'Hero',
-                  hp: hero?.hp ?? 0,
-                  maxHp: hero?.maxHp ?? 10,
-                  delta: heroDelta,
-                  kind: 'hero',
-                })}
-              </div>
-            </section>
-
-            <section class="clash-zone clash-zone-hand" data-coach="clash">
-              ${handHtml}
-            </section>
-
-            ${actionsHtml}
-          </div>
-
-          <aside class="clash-combat-log">
-            <h3>Combat log</h3>
-            <div class="log clash-log">
-              ${
-                combatLines.map((l) => `<div class="clash-log-line">${formatCombatLogLine(l)}</div>`).join('') ||
-                '<div class="muted">Combat lines appear here.</div>'
-              }
+              </aside>
+              ${leftSeats ? `<div class="clash-side clash-side-left">${leftSeats}</div>` : ''}
+              ${actionsHtml}
             </div>
-          </aside>
+
+            <div class="clash-col clash-col-center">
+              <section class="clash-zone clash-zone-mhand ${!heroTurn && !closing ? 'is-turn' : ''}">
+                <div class="clash-zone-label">${esc(clash.monsterName)}'s hand</div>
+                ${monsterHandFan(clash)}
+                ${monsterTurnHtml}
+              </section>
+
+              <section class="clash-zone clash-zone-mid">
+                <div class="clash-stacks">
+                  <div class="clash-stack" data-fly="z:deck" title="Action Deck">
+                    ${renderCardBack({ kind: 'action', size: 'mini' })}
+                    ${stackCount(decks.actionCount)}
+                    <span class="clash-stack-label">Deck</span>
+                  </div>
+                  <div class="clash-stack" title="Action discard">
+                    <div class="clash-slot" data-fly="z:discard"></div>
+                    ${stackCount(decks.actionDiscardCount)}
+                    <span class="clash-stack-label">Discard</span>
+                  </div>
+                </div>
+
+                <div class="clash-mid-stage ${fx.pileAnim ? 'stage-pulse' : ''}" data-coach="clash-pile">
+                  ${pileStack(clash)}
+                  <div class="clash-active-pill" style="--active:${activeColor}">
+                    <span class="muted">Active</span>
+                    <strong>${esc(activeMeta?.label || clash.activeSuit || '—')} ${clash.activeRank ?? ''}</strong>
+                    <span class="muted">· pile ${clash.pile?.length ?? 0}</span>
+                  </div>
+                  ${
+                    fx.turnChanged && !closing
+                      ? `<div class="clash-turn-banner ${heroTurn ? 'is-hero' : 'is-monster'}" aria-live="polite"><span>${esc(turnLabel)}</span></div>`
+                      : ''
+                  }
+                </div>
+
+                <div class="clash-stacks">
+                  <div class="clash-stack" data-fly="z:desp" title="Desperation Deck">
+                    ${desperationBack()}
+                    ${stackCount(decks.desperationCount)}
+                    <span class="clash-stack-label">Desperation</span>
+                  </div>
+                  ${
+                    lastDesp
+                      ? `<div class="clash-stack clash-last-desp ${fx.desperation ? 'just-flipped' : ''}" title="Last Desperation flipped">
+                          ${desperationCard(lastDesp)}
+                          <span class="clash-stack-label">Last flip</span>
+                        </div>`
+                      : ''
+                  }
+                </div>
+              </section>
+
+              <section class="clash-zone clash-zone-hand" data-coach="clash">
+                ${handHtml}
+              </section>
+            </div>
+
+            <div class="clash-col clash-col-right">
+              <section class="clash-zone clash-zone-monster ${!heroTurn && !closing ? 'is-turn' : ''}">
+                <div class="clash-seat-row">
+                  <div class="clash-seat-info">
+                    <div class="clash-zone-label">${clash.isBoss ? 'Floor Boss' : 'Monster'}</div>
+                    ${hpMeter({
+                      label: clash.monsterName,
+                      hp: clash.monsterHp,
+                      maxHp: clash.monsterMaxHp,
+                      delta: monsterDelta,
+                      kind: 'monster',
+                    })}
+                    <div class="clash-chips">${monsterChips}</div>
+                    ${clash.trait ? `<p class="muted clash-trait">${esc(clash.trait)}</p>` : ''}
+                  </div>
+                  <div class="clash-seat-card ${monsterDelta < 0 ? 'is-hit' : ''}">
+                    ${renderMonsterCard(clash.monsterId, {
+                      size: 'hand',
+                      hp: clash.monsterHp,
+                      maxHp: clash.monsterMaxHp,
+                      isBoss: clash.isBoss,
+                    })}
+                  </div>
+                </div>
+              </section>
+
+              ${rightSeats ? `<div class="clash-side clash-side-right">${rightSeats}</div>` : ''}
+
+              <section class="clash-zone clash-zone-hero ${mainHasTurn && !closing ? 'is-turn' : ''}">
+                <div class="clash-seat-row">
+                  <div class="clash-seat-info">
+                    <div class="clash-zone-label">${isMine ? 'You' : 'Hero'}</div>
+                    ${hpMeter({
+                      label: hero?.name || 'Hero',
+                      hp: hero?.hp ?? 0,
+                      maxHp: hero?.maxHp ?? 10,
+                      delta: mainDelta,
+                      kind: 'hero',
+                    })}
+                    ${heroChips ? `<div class="clash-chips">${heroChips}</div>` : ''}
+                    ${heroGear(hero)}
+                  </div>
+                  <div class="clash-seat-card ${mainDelta < 0 ? 'is-hit' : ''}">
+                    ${renderHeroCard(hero?.heroId, { size: 'hand', downed: hero?.downed })}
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            ${
+              outcome
+                ? `<div class="clash-outcome-banner" role="status">
+                    <strong>${esc(outcome.title)}</strong>
+                    ${outcome.sub ? `<span>${esc(outcome.sub)}</span>` : ''}
+                  </div>`
+                : ''
+            }
+          </div>
         </div>
       </div>
     </div>`;
@@ -426,7 +702,7 @@ function wireClashScrollContainment() {
   if (!backdrop) return;
 
   const onWheel = (e) => {
-    const scroller = e.target.closest?.('.clash-modal-body, .clash-log, .clash-modal');
+    const scroller = e.target.closest?.('.clash-log, .clash-modal-body');
     if (!scroller) {
       e.preventDefault();
       e.stopPropagation();
@@ -443,7 +719,7 @@ function wireClashScrollContainment() {
   };
 
   const onTouchMove = (e) => {
-    const scroller = e.target.closest?.('.clash-modal-body, .clash-log, .clash-modal');
+    const scroller = e.target.closest?.('.clash-log, .clash-modal-body');
     if (!scroller) {
       e.preventDefault();
       e.stopPropagation();
@@ -458,7 +734,6 @@ function wireClashScrollContainment() {
 
 /**
  * Lock document scroll while clash modal is open (and restore on close).
- * Call from render after mounting / tearing down the modal.
  */
 export function syncClashBodyScrollLock(open) {
   const body = document.body;
@@ -525,10 +800,107 @@ export function wireClashModal(room, session) {
       });
     });
   });
+  document.querySelectorAll('[data-clash-join]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      room.dispatch({ type: 'join-boss-clash', playerId: btn.getAttribute('data-clash-join') });
+    });
+  });
   wireLogCardHovers();
 }
 
 /** Wire log hovers outside clash (side panel log). */
 export function wireTableLogHovers() {
   wireLogCardHovers();
+}
+
+function clashLayer() {
+  let layer = document.getElementById('clash-layer');
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.id = 'clash-layer';
+    document.body.appendChild(layer);
+  }
+  return layer;
+}
+
+function teardownClashModal(session, layer) {
+  const ctl = session.clashCtl;
+  if (ctl?.timer) clearTimeout(ctl.timer);
+  Object.assign(ctl, { open: false, closing: false, key: null, snap: null, view: null, timer: null });
+  layer.innerHTML = '';
+  consumeClashFx(session, null);
+  syncClashBodyScrollLock(false);
+}
+
+/**
+ * Mount / update / retire the clash modal in its own layer, outside the table markup.
+ *
+ * The table re-renders on every status ping; the modal only repaints when the clash itself
+ * (state version, viewer, or error line) changes, so card flights are never restarted.
+ * When the clash leaves state, one last frame plays the result + cleanup before it closes.
+ */
+export function syncClashModal({ session, room, state, isDealer, meId }) {
+  const ctl =
+    session.clashCtl ||
+    (session.clashCtl = { open: false, closing: false, key: null, snap: null, view: null, timer: null });
+  const layer = clashLayer();
+  const live = Boolean(state?.phase === 'clash' && state.clash);
+
+  if (live) {
+    const snap = snapClash(state);
+    const key = [state.version, meId, isDealer ? 1 : 0, session.error || ''].join('|');
+    const sameClash = ctl.open && !ctl.closing && ctl.snap?.key === snap.key;
+    if (sameClash && ctl.key === key) return;
+
+    if (ctl.timer) {
+      clearTimeout(ctl.timer);
+      ctl.timer = null;
+    }
+    if (!sameClash) consumeClashFx(session, null);
+    const before = sameClash ? captureFly(layer) : null;
+    const fx = consumeClashFx(session, state);
+    const moves = sameClash ? diffClashMoves(ctl.snap, snap) : openingDealMoves(snap);
+
+    layer.innerHTML = renderClashModal(state, isDealer, meId, {
+      ...fx,
+      entering: !sameClash,
+      joined: moves.filter((m) => m.type === 'join').map((m) => m.heroId),
+      desperation: moves.some((m) => m.type === 'desperation'),
+      error: session.error,
+    });
+    wireClashModal(room, session);
+    playFly(layer, before, moves, { baseDelay: sameClash ? 0 : 320 });
+
+    Object.assign(ctl, { open: true, closing: false, key, snap, view: { state, isDealer, meId } });
+    syncClashBodyScrollLock(true);
+    return;
+  }
+
+  if (!ctl.open || ctl.closing) return;
+
+  const outcome = clashOutcome(ctl.view.state, state);
+  if (outcome === 'ended') {
+    teardownClashModal(session, layer);
+    return;
+  }
+
+  // Final frame: land the last card, show the result, sweep the table, then close.
+  ctl.closing = true;
+  const before = captureFly(layer);
+  const closingState = closingClashState(ctl.view.state, state, outcome);
+  const fx = consumeClashFx(session, closingState);
+  const moves = diffClashMoves(ctl.snap, snapClash(closingState)).filter((m) => m.type !== 'turn');
+  layer.innerHTML = renderClashModal(closingState, ctl.view.isDealer, ctl.view.meId, {
+    ...fx,
+    turnChanged: false,
+    closing: outcome,
+  });
+  wireClashScrollContainment();
+  playFly(layer, before, moves);
+  const sweep = playCleanupSweep(layer, { delay: 700 });
+  const hold = prefersReducedMotion() ? 1100 : Math.max(1600, sweep + 400);
+  ctl.timer = setTimeout(() => {
+    layer.querySelector('.clash-modal-backdrop')?.classList.add('is-leaving');
+    ctl.timer = setTimeout(() => teardownClashModal(session, layer), 280);
+  }, hold);
 }
