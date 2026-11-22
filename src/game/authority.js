@@ -331,6 +331,7 @@ export function applyAction(state, action, actorId) {
         const hero = next.heroes[heroPid];
         if (clash.heroDazed) {
           clash.heroDazed = false;
+          clash.twinRank = null;
           appendLog(next, `${hero.name} is Dazed and misses this turn!`);
           advanceAfterHeroTurn(next, { skipped: true });
           break;
@@ -342,6 +343,42 @@ export function applyAction(state, action, actorId) {
         const card = hero.hand.find((c) => c.id === action.cardId);
         if (!card) return fail(next, 'Card not in hand');
         if (isCramp(card)) return fail(next, 'Cannot play Cramp! onto Clash Pile');
+
+        if (clash.twinRank != null) {
+          if (isSpecial(card) || isWild(card) || Number(card.rank) !== clash.twinRank) {
+            return fail(next, `Twin Butter-Knives follow-up must match Rank ${clash.twinRank}`);
+          }
+          hero.hand = hero.hand.filter((c) => c.id !== card.id);
+          afterPlayUpdateActive(clash, card);
+          let dmg = weaponStrike(hero) + themeSparkBonus(state.themeId, card);
+          if (hero.weapon?.strikeBonusSuit && card.suit === hero.weapon.strikeBonusSuit) dmg += 1;
+          const gritPierces = Boolean(hero.weapon?.gritIgnoresArmor && card.suit === 'grit');
+          damageMonster(next, hero, dmg, card, { ignoreArmor: gritPierces });
+          appendLog(
+            next,
+            `${hero.name} Twin Butter-Knives 2nd Strike (${cardLabel(card)}) — ${dmg} Dmg!`,
+          );
+          applyHeroStrikeTriggers(next, hero, card, 'clean');
+          if (
+            hero.armor?.id === 'G-20' &&
+            card.suit === 'zip' &&
+            (Number(card.rank) === 1 || Number(card.rank) === 2)
+          ) {
+            discardToAction(next, card);
+            clash.twinRank = null;
+            appendLog(next, `Sneaky Blanket of Vanishing — ${hero.name} tip-toes out of combat!`);
+            cleanupClash(next, { victory: false });
+            break;
+          }
+          discardToAction(next, card);
+          clash.twinRank = null;
+          if (next.clash && next.clash.monsterHp <= 0) {
+            endClashVictory(next);
+          } else {
+            advanceAfterHeroTurn(next);
+          }
+          break;
+        }
 
         const playOpts = buildHeroPlayOptions(hero, clash, card, action);
         if (!isLegalPlay(card, clash, playOpts)) {
@@ -357,6 +394,24 @@ export function applyAction(state, action, actorId) {
         if (outcome === 'again') {
           clash.needsDraw = false;
           clash.whoseTurn = 'hero';
+        } else if (
+          next.clash &&
+          next.clash.monsterHp > 0 &&
+          hero.weapon?.id === 'G-13' &&
+          card.rank != null &&
+          !isSpecial(card) &&
+          !isWild(card) &&
+          hero.hand.some(
+            (c) => !isCramp(c) && !isSpecial(c) && !isWild(c) && Number(c.rank) === Number(card.rank),
+          )
+        ) {
+          clash.twinRank = Number(card.rank);
+          clash.needsDraw = false;
+          clash.whoseTurn = 'hero';
+          appendLog(
+            next,
+            `Twin Butter-Knives ready — ${hero.name} may play another Rank ${card.rank} or finish turn.`,
+          );
         } else {
           advanceAfterHeroTurn(next);
         }
@@ -366,12 +421,24 @@ export function applyAction(state, action, actorId) {
         break;
       }
 
+      case 'clash-end-twin': {
+        if (next.phase !== 'clash' || !next.clash) return fail(next, 'No active clash');
+        const clash = next.clash;
+        if (clash.whoseTurn !== 'hero') return fail(next, 'Not hero combat turn');
+        if (clash.twinRank == null) return fail(next, 'No Twin Knives follow-up pending');
+        if (actor.role !== 'dealer' && actorId !== clash.heroPlayerId) return fail(next, 'Not your clash');
+        clash.twinRank = null;
+        advanceAfterHeroTurn(next);
+        break;
+      }
+
       case 'clash-clear-cramp': {
         if (next.phase !== 'clash' || !next.clash) return fail(next, 'No active clash');
         const clash = next.clash;
         if (clash.whoseTurn !== 'hero') return fail(next, 'Not hero combat turn');
         const hero = next.heroes[clash.heroPlayerId];
         if (actor.role !== 'dealer' && actorId !== clash.heroPlayerId) return fail(next, 'Not your clash');
+        clash.twinRank = null;
         if (clash.needsDraw) {
           drawAction(next, hero);
           clash.needsDraw = false;
@@ -391,6 +458,7 @@ export function applyAction(state, action, actorId) {
         if (clash.whoseTurn !== 'hero') return fail(next, 'Not hero combat turn');
         const hero = next.heroes[clash.heroPlayerId];
         if (actor.role !== 'dealer' && actorId !== clash.heroPlayerId) return fail(next, 'Not your clash');
+        clash.twinRank = null;
         if (clash.needsDraw) {
           drawAction(next, hero);
           clash.needsDraw = false;
@@ -413,7 +481,7 @@ export function applyAction(state, action, actorId) {
         const beltIdx = Number(action.beltIndex);
         const item = hero.belt?.[beltIdx];
         if (!item) return fail(next, 'No belt item');
-        const def = getGear(item.id);
+        const def = getGear(item.gearId || item.id);
         if (def?.type === 'escape') {
           // G-29 Confetti Smoke Bomb — free combat use
           hero.belt.splice(beltIdx, 1);
@@ -422,12 +490,12 @@ export function applyAction(state, action, actorId) {
             cleanupClash(next, { victory: false });
           } else {
             clash.monsterDazed = true;
-            appendLog(next, `${hero.name} pops ${def.name} — ${clash.monsterName} is Dazed!`);
-            advanceAfterHeroTurn(next);
+            appendLog(next, `${hero.name} pops ${def.name} — ${clash.monsterName} is Dazed! (Free action.)`);
           }
           break;
         }
         if (def?.type === 'heal') {
+          if (hero.hp >= hero.maxHp) return fail(next, 'Already at full HP');
           hero.belt.splice(beltIdx, 1);
           hero.hp = Math.min(hero.maxHp, hero.hp + (def.heal || 4));
           appendLog(next, `${hero.name} sips ${def.name} mid-clash (+${def.heal || 4} HP → ${hero.hp}).`);
@@ -536,15 +604,58 @@ export function applyAction(state, action, actorId) {
         if (next.pending) return fail(next, 'Resolve the pending prompt first');
         const heroPid = resolveHeroActor(next, actor, action.playerId);
         if (!heroPid) return fail(next, 'Not a hero');
+        const hero = next.heroes[heroPid];
+        if (!hero) return fail(next, 'Missing hero');
+        const playerName = next.players.find((p) => p.id === heroPid)?.name || hero.name || 'Hero';
+
+        if (action.subtype === 'use-consumable') {
+          const beltIdx = Number(action.beltIndex);
+          const item = hero.belt?.[beltIdx];
+          if (!item) return fail(next, 'No belt item');
+          const def = getGear(item.gearId || item.id);
+          if (!def) return fail(next, 'Unknown consumable');
+          if (def.type === 'heal') {
+            if (hero.downed) return fail(next, 'DOWNED heroes cannot drink potions');
+            if (actor.role !== 'dealer' && actorId !== heroPid) {
+              return fail(next, 'Cannot use another hero potion');
+            }
+            if (hero.hp >= hero.maxHp) return fail(next, 'Already at full HP');
+            hero.belt.splice(beltIdx, 1);
+            hero.hp = Math.min(hero.maxHp, hero.hp + (def.heal || 4));
+            appendLog(next, `${playerName} sips ${def.name} (+${def.heal || 4} HP → ${hero.hp}).`);
+            break;
+          }
+          if (def.type === 'revive') {
+            if (next.turnOrder[next.activeHeroIndex] !== heroPid && actor.role !== 'dealer') {
+              return fail(next, 'Not your turn');
+            }
+            if (next.explorationActionsLeft < 1) return fail(next, 'No exploration actions left');
+            if (hero.downed) return fail(next, 'DOWNED heroes cannot interact');
+            const targetId = action.targetPlayerId || heroPid;
+            const ally = next.heroes[targetId];
+            if (!ally?.downed || ally.roomKey !== hero.roomKey) {
+              return fail(next, 'Need a DOWNED ally in your room');
+            }
+            next.explorationActionsLeft -= 1;
+            hero.belt.splice(beltIdx, 1);
+            ally.downed = false;
+            ally.hp = 4;
+            ally.hand = [];
+            for (let i = 0; i < 4; i += 1) drawAction(next, ally);
+            appendLog(next, `${playerName} uses ${def.name} — ${ally.name} wakes at 4 HP.`);
+            maybeEndExplore(next);
+            break;
+          }
+          return fail(next, 'That belt item is not usable here');
+        }
+
         if (next.turnOrder[next.activeHeroIndex] !== heroPid && actor.role !== 'dealer') {
           return fail(next, 'Not your turn');
         }
         if (next.explorationActionsLeft < 1) return fail(next, 'No exploration actions left');
-        const hero = next.heroes[heroPid];
         if (hero.downed && action.subtype !== 'revive') return fail(next, 'DOWNED heroes cannot interact');
         const tile = next.map.tiles.find((t) => t.key === hero.roomKey);
         if (!tile?.faceUp) return fail(next, 'Must be in a face-up room');
-        const playerName = next.players.find((p) => p.id === heroPid)?.name || 'Hero';
 
         if (action.subtype === 'vault') {
           if (tile.kind !== 'vault') return fail(next, 'Not in a vault');
@@ -632,37 +743,6 @@ export function applyAction(state, action, actorId) {
           appendLog(next, `${playerName} echoes down the hallway — draws 1 Action card.`);
           maybeEndExplore(next);
           break;
-        }
-
-        if (action.subtype === 'use-consumable') {
-          const beltIdx = Number(action.beltIndex);
-          const item = hero.belt?.[beltIdx];
-          if (!item) return fail(next, 'No belt item');
-          const def = getGear(item.id || item.gearId);
-          if (!def) return fail(next, 'Unknown consumable');
-          if (def.type === 'heal') {
-            hero.belt.splice(beltIdx, 1);
-            hero.hp = Math.min(hero.maxHp, hero.hp + (def.heal || 4));
-            appendLog(next, `${playerName} sips ${def.name} (+${def.heal || 4} HP → ${hero.hp}).`);
-            break;
-          }
-          if (def.type === 'revive') {
-            const targetId = action.targetPlayerId || heroPid;
-            const ally = next.heroes[targetId];
-            if (!ally?.downed || ally.roomKey !== hero.roomKey) {
-              return fail(next, 'Need a DOWNED ally in your room');
-            }
-            next.explorationActionsLeft -= 1;
-            hero.belt.splice(beltIdx, 1);
-            ally.downed = false;
-            ally.hp = 4;
-            ally.hand = [];
-            for (let i = 0; i < 4; i += 1) drawAction(next, ally);
-            appendLog(next, `${playerName} uses ${def.name} — ${ally.name} wakes at 4 HP.`);
-            maybeEndExplore(next);
-            break;
-          }
-          return fail(next, 'That belt item is not usable here');
         }
 
         return fail(next, `Unknown interact ${action.subtype}`);
@@ -990,6 +1070,7 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null, { fighterId
     usedDesperation: false,
     negateNextMonsterHit: false,
     pendingKoboldSwings: 0,
+    twinRank: null,
     note: isBoss
       ? 'Boss clash — Heroes next to the Boss Chamber may still pile in on the same pile!'
       : 'Monster leads — then play matching Suit or Rank (or Wild / Desperation).',
@@ -1040,40 +1121,34 @@ function buildHeroPlayOptions(hero, clash, card, action = {}) {
     opts.forceParry = true;
   }
   if (
-    action.usePerk !== false &&
+    action.useBigSwing !== false &&
     hero.perk?.id === 'big-swing' &&
     !hero.perkUsedThisClash &&
     card?.suit === 'brawn' &&
-    (action.useBigSwing || action.usePerk)
-  ) {
-    opts.bigSwing = true;
-  }
-  // Auto Big Swing once when playing Brawn if perk unused and play would benefit
-  if (
-    hero.perk?.id === 'big-swing' &&
-    !hero.perkUsedThisClash &&
-    card?.suit === 'brawn' &&
+    card.rank != null &&
     !isSpecial(card) &&
     !isWild(card)
   ) {
     const without = isLegalPlay(card, clash);
     const withSwing = isLegalPlay(card, clash, { bigSwing: true });
-    if (action.useBigSwing || (!without && withSwing) || action.usePerk) {
+    const beforeKind = classifyPlay(card, clash);
+    const afterKind = classifyPlay(card, clash, { bigSwing: true });
+    const upgradesOutcome =
+      (beforeKind === 'guard' && (afterKind === 'parry' || afterKind === 'clean')) ||
+      (beforeKind === 'parry' && afterKind === 'clean');
+    if (action.useBigSwing === true || action.usePerk === true || (!without && withSwing) || upgradesOutcome) {
       opts.bigSwing = true;
-    } else if (action.useBigSwing !== false && classifyPlay(card, clash, { bigSwing: true }) === 'clean') {
-      // Prefer clean strike upgrade when already legal as guard
-      if (classifyPlay(card, clash) === 'guard') opts.bigSwing = true;
     }
   }
   if (
+    action.useZap !== false &&
     hero.perk?.id === 'improvised-zap' &&
     !hero.perkUsedThisClash &&
     card?.suit === 'spark' &&
     !isSpecial(card) &&
     !isWild(card)
   ) {
-    const without = isLegalPlay(card, clash);
-    if (!without || action.useZap) {
+    if (!isLegalPlay(card, clash)) {
       opts.defensiveSparkAsAny = true;
     }
   }
@@ -1084,6 +1159,7 @@ function advanceAfterHeroTurn(state, { skipped = false } = {}) {
   const clash = state.clash;
   if (!clash) return;
   clash.needsDraw = false;
+  clash.twinRank = null;
   const multi = clash.isBoss && (clash.fighters?.length || 1) > 1;
   if (multi) {
     clash.heroTurnsSinceBoss = (clash.heroTurnsSinceBoss || 0) + 1;
@@ -1176,15 +1252,17 @@ function resolveHeroCardPlay(state, hero, card, wildSuit, playOpts = {}) {
     appendLog(state, `${hero.name} taps ${hero.offhand.name} — forced Parry!`);
   }
 
+  const gritPierces = Boolean(hero.weapon?.gritIgnoresArmor && card.suit === 'grit');
+
   if (isSpecial(card)) {
     afterPlayUpdateActive(clash, card);
     if (card.kind === 'daze') {
       // G-21 Dramatic Greatsword: Daze deals +2 bonk
-      let bonus = hero.weapon?.id === 'G-21' ? 2 : 0;
-      bonus += themeSparkBonus(state.themeId, card);
+      const swordBonus = hero.weapon?.id === 'G-21' ? 2 : 0;
+      const bonus = swordBonus + themeSparkBonus(state.themeId, card);
       if (bonus) {
         damageMonster(state, hero, bonus, card, { ignoreArmor: true });
-        appendLog(state, `Dramatic Greatsword bonk +${bonus} on Daze!`);
+        if (swordBonus) appendLog(state, `Dramatic Greatsword bonk +${swordBonus} on Daze!`);
       }
       if (clash.traitId === 'three-way-team') {
         clash.pendingKoboldSwings = 2;
@@ -1202,7 +1280,7 @@ function resolveHeroCardPlay(state, hero, card, wildSuit, playOpts = {}) {
       }
       again = true;
     } else if (card.kind === 'bounce') {
-      damageMonster(state, hero, 1 + themeSparkBonus(state.themeId, card), card);
+      damageMonster(state, hero, 1 + themeSparkBonus(state.themeId, card), card, { ignoreArmor: gritPierces });
       // G-22 Fizz-Pop: Purple Bounce heals 2
       if (hero.weapon?.id === 'G-22' && card.suit === 'spark') {
         hero.hp = Math.min(hero.maxHp, hero.hp + 2);
@@ -1214,10 +1292,10 @@ function resolveHeroCardPlay(state, hero, card, wildSuit, playOpts = {}) {
       }
       appendLog(state, `${hero.name} Bounce Back! — reflects 1 Dmg (${clash.monsterName} at ${clash.monsterHp} HP).`);
     } else if (card.kind === 'tuckered') {
-      damageMonster(state, hero, 2 + themeSparkBonus(state.themeId, card), card, { direct: true });
+      damageMonster(state, hero, 2 + themeSparkBonus(state.themeId, card), card, { direct: true, ignoreArmor: gritPierces });
       appendLog(state, `${hero.name} Tuckered Out! (+2) — ${clash.monsterName} takes 2 direct Dmg (${clash.monsterHp} HP).`);
       // G-24 Tick-Tock lantern
-      if (hero.belt?.some((b) => b.id === 'G-24')) {
+      if (hero.belt?.some((b) => (b.gearId || b.id) === 'G-24')) {
         drawAction(state, hero);
         appendLog(state, `Tick-Tock Pocket Lantern — draw 1 Action!`);
       }
@@ -1235,7 +1313,7 @@ function resolveHeroCardPlay(state, hero, card, wildSuit, playOpts = {}) {
       } else {
         appendLog(state, `${hero.name} Clean Strike with ${cardLabel(card)} — ${dmg} Dmg!`);
       }
-      damageMonster(state, hero, dmg, card);
+      damageMonster(state, hero, dmg, card, { ignoreArmor: gritPierces });
       applyHeroStrikeTriggers(state, hero, card, kind);
     } else if (kind === 'parry') {
       appendLog(state, `${hero.name} PARRIES with ${cardLabel(card)}! Suit → ${clash.activeSuit}.`);
@@ -1246,13 +1324,13 @@ function resolveHeroCardPlay(state, hero, card, wildSuit, playOpts = {}) {
       }
       // G-14 Barn-Door: Parries reflect 1
       if (hero.offhand?.id === 'G-14') {
-        damageMonster(state, hero, 1, card);
+        damageMonster(state, hero, 1, card, { ignoreArmor: gritPierces });
         appendLog(state, `Barn-Door Tower Shield reflects 1 Dmg!`);
       }
       applyHeroStrikeTriggers(state, hero, card, kind);
     } else {
       let chip = 1 + themeSparkBonus(state.themeId, card);
-      damageMonster(state, hero, chip, card);
+      damageMonster(state, hero, chip, card, { ignoreArmor: gritPierces });
       appendLog(state, `${hero.name} Guards with ${cardLabel(card)} — ${chip} chip Dmg (${clash.monsterName} at ${clash.monsterHp}).`);
       applyHeroStrikeTriggers(state, hero, card, kind);
     }
@@ -1266,8 +1344,14 @@ function resolveHeroCardPlay(state, hero, card, wildSuit, playOpts = {}) {
 
   // G-19 Boom-Hammer Blue 4 auto-Daze
   if (hero.weapon?.id === 'G-19' && card.suit === 'grit' && Number(card.rank) === 4) {
-    clash.monsterDazed = true;
-    appendLog(state, `Boom-Hammer of Boops — Blue 4 auto-Daze!`);
+    if (clash.traitId === 'three-way-team') {
+      clash.pendingKoboldSwings = 2;
+      clash.monsterDazed = false;
+      appendLog(state, `Boom-Hammer of Boops — Blue 4 triggers Daze, but Three Kobolds queue 2 free swings!`);
+    } else {
+      clash.monsterDazed = true;
+      appendLog(state, `Boom-Hammer of Boops — Blue 4 auto-Daze!`);
+    }
   }
 
   // G-20 Sneaky Blanket: Yellow 1 or 2 → flee
@@ -1325,8 +1409,14 @@ function damageMonster(state, hero, amount, card, opts = {}) {
     return;
   }
 
-  // MON-02 Rattle Armor: ignore first 1 damage
-  if (clash.traitId === 'rattle-armor' && !clash.ignoredFirstHit && dmg > 0) {
+  // MON-02 Rattle Armor: ignore first 1 damage (unless Armor-pierced)
+  if (
+    clash.traitId === 'rattle-armor' &&
+    !clash.ignoredFirstHit &&
+    dmg > 0 &&
+    !opts.ignoreArmor &&
+    !opts.pierce
+  ) {
     clash.ignoredFirstHit = true;
     dmg -= 1;
     appendLog(state, `Rattle Armor absorbs the first 1 damage!`);
@@ -1416,7 +1506,7 @@ function hurtHero(state, hero, amount, card) {
   }
   let dmg = amount;
   const rank = card?.rank != null ? Number(card.rank) : null;
-  if (rank != null && hero.armor?.ignoreRanks?.includes(rank)) {
+  if (rank != null && hero.armor && !hero.armor.tapped && hero.armor.ignoreRanks?.includes(rank)) {
     appendLog(state, `${hero.name}'s armor ignores Rank ${rank} damage!`);
     return;
   }
@@ -1597,9 +1687,8 @@ function discardToAction(state, card) {
   state.decks.actionDiscard.push(card);
 }
 
-function knockDownHero(state, hero) {
-  // G-30 Second Wind Snack Charm — once per floor, keep hand
-  const charmIdx = (hero.belt || []).findIndex((b) => b.id === 'G-30');
+function trySecondWind(state, hero) {
+  const charmIdx = (hero.belt || []).findIndex((b) => (b.gearId || b.id) === 'G-30');
   if (charmIdx >= 0 && !hero.secondWindUsed) {
     hero.belt.splice(charmIdx, 1);
     hero.secondWindUsed = true;
@@ -1609,8 +1698,14 @@ function knockDownHero(state, hero) {
       state,
       `${hero.name} eats the Second Wind Snack Charm — bounces back to 4 HP and keeps their hand!`,
     );
-    return;
+    return true;
   }
+  return false;
+}
+
+function knockDownHero(state, hero) {
+  // G-30 Second Wind Snack Charm — once per floor, keep hand
+  if (trySecondWind(state, hero)) return;
 
   hero.hp = 0;
   hero.downed = true;
@@ -1868,9 +1963,13 @@ function applyEventChoice(state, hero, event, choice) {
     else drawTwist(state, 'Gargoyle bell rings');
   }
   if (hero.hp <= 0) {
-    hero.hp = 0;
-    hero.downed = true;
-    appendLog(state, `${hero.name} collapses from the hazard!`);
+    if (!trySecondWind(state, hero)) {
+      hero.hp = 0;
+      hero.downed = true;
+      for (const c of hero.hand) discardToAction(state, c);
+      hero.hand = [];
+      appendLog(state, `${hero.name} collapses from the hazard!`);
+    }
   }
 }
 

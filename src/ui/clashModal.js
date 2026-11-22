@@ -10,7 +10,7 @@ import {
 } from './cardView.js';
 import { ASSET, SUIT_META } from '../data/artMeta.js';
 import { DESPERATION } from '../data/desperation.js';
-import { isLegalPlay, isCramp, heroHasLegalPlay } from '../game/clash.js';
+import { isLegalPlay, isCramp, isSpecial, isWild, heroHasLegalPlay } from '../game/clash.js';
 import { bossJoinCheck } from '../game/boss.js';
 import {
   clashFighters,
@@ -161,6 +161,9 @@ export function clashPlayOptionsFor(hero) {
 }
 
 function cardIsLegal(c, clash, playOpts, hasCookie) {
+  if (clash?.twinRank != null) {
+    return Boolean(c && !isCramp(c) && !isSpecial(c) && !isWild(c) && Number(c.rank) === clash.twinRank);
+  }
   return (
     isLegalPlay(c, clash) ||
     isLegalPlay(c, clash, { bigSwing: playOpts.bigSwing && c.suit === 'brawn' }) ||
@@ -359,7 +362,12 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
   const fighterHand = hero?.hand || [];
   const playOpts = clashPlayOptionsFor(hero);
   const hasCookie = Boolean(playOpts.forceParry);
-  const confettiIdx = (hero?.belt || []).findIndex((b) => b.id === 'G-29');
+  const belt = hero?.belt || [];
+  const confettiIdx = belt.findIndex((b) => (b.gearId || b.id) === 'G-29');
+  const healItems = belt
+    .map((b, i) => ({ b, i, gid: b.gearId || b.id }))
+    .filter((x) => x.gid === 'G-27' || x.gid === 'G-28');
+  const twinPending = clash.twinRank != null;
   const fighterNames = fighters.map((pid) => state.heroes[pid]?.name || pid);
   const heroDeltas = fx.heroDeltas || {};
   const mainDelta = heroDeltas[mainId] ?? (mainId === clash.heroPlayerId ? fx.heroDelta || 0 : 0);
@@ -401,15 +409,29 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
 
   const noLegal =
     canPlay &&
+    !twinPending &&
     !heroHasLegalPlay(hero, clash, playOpts) &&
     !(hasCookie && fighterHand.some((c) => !isCramp(c)));
+
+  const healButtonsHtml = healItems
+    .map(
+      ({ i }) =>
+        `<button type="button" data-clash-belt="${i}" data-belt-mode="heal" ${(hero?.hp ?? 0) >= (hero?.maxHp ?? 10) ? 'disabled' : ''}>Drink Fizz Potion (+4 HP · free)</button>`,
+    )
+    .join('');
 
   const actionsHtml = `
     <div class="clash-actions">
       ${fx.error ? `<p class="clash-error" role="alert">${esc(fx.error)}</p>` : ''}
       ${
         canPlay
-          ? `
+          ? twinPending
+            ? `
+        <button type="button" class="primary" id="btn-clash-end-twin">Done with Twin Knives (skip 2nd Rank ${clash.twinRank})</button>
+        ${healButtonsHtml}
+        <p class="muted clash-tray-note">Twin Butter-Knives: play another Rank ${clash.twinRank} card or finish turn.</p>
+      `
+            : `
         <button type="button" id="btn-clash-desperation" class="${noLegal ? 'primary' : ''}">Flip Desperation</button>
         <button type="button" id="btn-clash-cramp" ${fighterHand.some((c) => isCramp(c)) ? '' : 'disabled'}>Stretch (discard ≤2 Cramp!)</button>
         ${
@@ -421,10 +443,11 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
         }
         ${
           confettiIdx >= 0
-            ? `<button type="button" data-clash-belt="${confettiIdx}" data-belt-mode="daze">Confetti Bomb — Daze</button>
+            ? `<button type="button" data-clash-belt="${confettiIdx}" data-belt-mode="daze">Confetti Bomb — Daze (free)</button>
                <button type="button" data-clash-belt="${confettiIdx}" data-belt-mode="flee">Confetti Bomb — Flee</button>`
             : ''
         }
+        ${healButtonsHtml}
         ${noLegal ? '<p class="muted clash-tray-note">No legal plays — Desperation recommended.</p>' : ''}
       `
           : ''
@@ -769,6 +792,9 @@ export function wireClashModal(room, session) {
   document.getElementById('btn-clash-cramp')?.addEventListener('click', () => {
     room.dispatch({ type: 'clash-clear-cramp' });
   });
+  document.getElementById('btn-clash-end-twin')?.addEventListener('click', () => {
+    room.dispatch({ type: 'clash-end-twin' });
+  });
   document.querySelectorAll('[data-clash-card]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const cardId = btn.getAttribute('data-clash-card');
@@ -779,13 +805,26 @@ export function wireClashModal(room, session) {
       if (card?.type === 'wild' || card?.kind === 'wild') {
         action.wildSuit = hero?.preferredSuit || 'brawn';
       }
-      if (document.getElementById('chk-cookie-parry')?.checked) {
+      const playOpts = clashPlayOptionsFor(hero);
+      const legalWithoutCookie =
+        clash?.twinRank != null ||
+        isLegalPlay(card, clash) ||
+        isLegalPlay(card, clash, { bigSwing: playOpts.bigSwing && card?.suit === 'brawn' }) ||
+        isLegalPlay(card, clash, {
+          defensiveSparkAsAny: playOpts.defensiveSparkAsAny && card?.suit === 'spark',
+        });
+      if (
+        document.getElementById('chk-cookie-parry')?.checked ||
+        (playOpts.forceParry && !legalWithoutCookie)
+      ) {
         action.forceParry = true;
       }
-      if (hero?.perk?.id === 'big-swing' && !hero.perkUsedThisClash && card?.suit === 'brawn') {
-        action.useBigSwing = true;
-      }
-      if (hero?.perk?.id === 'improvised-zap' && !hero.perkUsedThisClash && card?.suit === 'spark') {
+      if (
+        hero?.perk?.id === 'improvised-zap' &&
+        !hero.perkUsedThisClash &&
+        card?.suit === 'spark' &&
+        !isLegalPlay(card, clash)
+      ) {
         action.useZap = true;
       }
       room.dispatch(action);
