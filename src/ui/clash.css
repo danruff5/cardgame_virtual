@@ -850,6 +850,7 @@ button.clash-card-btn:disabled .vcard {
 .clash-log {
   max-height: none;
   min-height: 0;
+  align-content: start;
   overflow: auto;
   overscroll-behavior: contain;
   font-size: 0.82rem;
