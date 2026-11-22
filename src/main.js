@@ -170,7 +170,7 @@ function renderLobbyShell() {
         <div class="inventory">
           heroes ${inv.heroes} · gear ${inv.gear} · action ${inv.actionDeck} · desperation ${inv.desperation}<br/>
           cramp ${inv.cramp} · rooms ${inv.rooms} (recipe ${inv.defaultFloorTiles}) · monsters ${inv.monsters} · bosses ${inv.bosses}<br/>
-          events ${inv.events} · merchants ${inv.merchants} · stories ${inv.stories} · themes ${inv.themes} · twists ${inv.twists}
+          events ${inv.events} · merchants ${inv.merchants} · themes ${inv.themes} · twists ${inv.twists}
         </div>
         <p class="muted">Lobby + exploration + Clash &amp; Chain combat (match Suit/Rank, Desperation, dealer monster turns). Art from the print-and-play compositor.</p>
       </section>
@@ -573,7 +573,7 @@ function shortRoomLabel(tile) {
     boss: 'Boss',
     vault: 'Vault',
     trap: 'Trap',
-    story: 'Story',
+    merchant: 'Merchant',
     hallway: 'Hall',
   };
   return map[tile.kind] || tile.name;
@@ -586,10 +586,10 @@ function renderDealerTools(state) {
       <p class="muted">You are the authority host. Local stub seats can be moved with the map (dealer puppets the active turn).</p>
       <div class="inventory">
         Decks — action ${state.decks.actionCount ?? '—'} · loot ${state.decks.lootCount ?? '—'} ·
-        events ${state.decks.eventsCount ?? '—'} · story/merchant ${state.decks.storyMerchantCount ?? '—'} ·
+        events ${state.decks.eventsCount ?? '—'} · merchants ${state.decks.merchantsCount ?? '—'} ·
         monsters ${state.decks.monstersCount ?? '—'} · twists ${state.decks.twistsCount ?? '—'}
       </div>
-      <p class="muted" style="margin:0">Layout: ${state.layoutMode || 'random'} · Story stack: ${(state.storyStack || []).length}</p>
+      <p class="muted" style="margin:0">Layout: ${state.layoutMode || 'random'}</p>
       <h3>Floor progress</h3>
       <p class="muted" style="margin:0">Boss defeated: ${state.floor?.bossDefeated ? 'yes' : 'no'} · Stairs: ${stairsOpen ? 'unlocked' : 'locked'} · Key: ${state.floor?.shinyKey ? 'yes' : 'no'}</p>
       <div class="row">
@@ -597,11 +597,6 @@ function renderDealerTools(state) {
         <button class="primary" type="button" id="btn-end-floor" ${state.phase === 'victory' ? 'disabled' : ''}>End floor / victory</button>
       </div>
       <p class="muted">The Boss never starts on its own — call <strong>Start Boss fight</strong> once the party has gathered. Winning it unlocks the stairs. Heroes then move onto the Stairway Down — or use <strong>End floor</strong> to wrap up.</p>
-      <div class="field">
-        <label for="dealer-note">Narrate / note</label>
-        <input id="dealer-note" maxlength="120" placeholder="The cocoa smells suspicious…" />
-      </div>
-      <button type="button" id="btn-dealer-log">Push to log</button>
       <h3>Twist hand</h3>
       <div class="hand">
         ${(state.decks.twistHand || [])
@@ -652,21 +647,6 @@ function renderPending(state, isDealer, meId) {
         <div class="row">
           <button type="button" class="primary" data-event-choice="a" ${mine ? '' : 'disabled'}>Choice A</button>
           <button type="button" data-event-choice="b" ${mine ? '' : 'disabled'}>Choice B</button>
-          <button type="button" data-event-choice="improvise" ${mine ? '' : 'disabled'}>Improvise</button>
-        </div>
-      </div>`;
-  }
-  if (pending.kind === 'story') {
-    const st = pending.story;
-    return `
-      <div class="panel" style="box-shadow:none;border-color:rgba(120,140,200,0.45)">
-        <h3>${escapeHtml(st.name)}</h3>
-        <p>${escapeHtml(st.scene || '')}</p>
-        <ul>${(st.choices || []).map((c) => `<li>${escapeHtml(c)}</li>`).join('')}</ul>
-        <div class="row">
-          <button type="button" class="primary" data-story-choice="a" ${mine ? '' : 'disabled'}>Choice A</button>
-          <button type="button" data-story-choice="b" ${mine ? '' : 'disabled'}>Choice B</button>
-          <button type="button" data-story-choice="improvise" ${mine ? '' : 'disabled'}>Improvise</button>
         </div>
       </div>`;
   }
@@ -719,8 +699,11 @@ function renderRoomActions(state, isDealer, meId) {
   const downedAllies = Object.entries(state.heroes).filter(
     ([pid, h]) => h.downed && h.roomKey === tile.key && pid !== activeId,
   );
-  if (!hero.downed) {
-    buttons.push(`<button type="button" id="btn-stunt">Improvise Stunt (1 Action)</button>`);
+  const jammedHere = (state.map.barriers || []).some(
+    (b) => b.aKey === tile.key || b.bKey === tile.key,
+  );
+  if (!hero.downed && jammedHere) {
+    buttons.push(`<button type="button" id="btn-pry-jam">Pry Door Jam (Brawn 3+ · 1 Action)</button>`);
   }
   if (!hero.downed && downedAllies.length && state.explorationActionsLeft >= 2) {
     for (const [pid, h] of downedAllies) {
@@ -798,10 +781,6 @@ function wireTable() {
   document.getElementById('btn-boss-start')?.addEventListener('click', () => {
     room.dispatch({ type: 'start-boss-clash' });
   });
-  document.getElementById('btn-dealer-log')?.addEventListener('click', () => {
-    const message = document.getElementById('dealer-note')?.value?.trim();
-    if (message) room.dispatch({ type: 'dealer-log', message });
-  });
   document.getElementById('btn-unlock-stairs')?.addEventListener('click', () => {
     room.dispatch({ type: 'unlock-stairs', reason: 'Dealer unlocks stairs (Shiny Key / 5+ Zip or Brawn stunt).' });
   });
@@ -829,14 +808,6 @@ function wireTable() {
       room.dispatch({
         type: 'resolve-pending',
         choice: btn.getAttribute('data-event-choice'),
-      });
-    });
-  });
-  document.querySelectorAll('[data-story-choice]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      room.dispatch({
-        type: 'resolve-pending',
-        choice: btn.getAttribute('data-story-choice'),
       });
     });
   });
@@ -884,18 +855,13 @@ function wireTable() {
       );
     });
   });
-  document.getElementById('btn-stunt')?.addEventListener('click', () => {
-    const suit = window.prompt('Stunt suit (brawn/grit/zip/spark)?', 'zip') || 'zip';
-    const target = Number(window.prompt('Target number (3 easy / 4 tricky / 5 heroic)?', '4')) || 4;
-    const purpose =
-      window.prompt('Purpose: generic / peek / unlock-stairs / pry / bribe / hallway?', 'generic') ||
-      'generic';
+  document.getElementById('btn-pry-jam')?.addEventListener('click', () => {
     room.dispatch(
       withPlayer({
         type: 'stunt',
-        suit: suit.toLowerCase(),
-        target,
-        purpose,
+        suit: 'brawn',
+        target: 3,
+        purpose: 'pry',
         reroll: true,
       }),
     );
