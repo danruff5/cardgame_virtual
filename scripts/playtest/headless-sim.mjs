@@ -129,6 +129,7 @@ function runSingleSim(index, partySize) {
   dispatch({ type: 'start-floor', layoutMode: 'random' }, dealerId);
 
   let steps = 0;
+  let bossWaitTurns = 0;
   let anomaly = null;
 
   while (steps < 450) {
@@ -174,10 +175,19 @@ function runSingleSim(index, partySize) {
       const pid = clash.heroPlayerId;
       const hero = state.heroes[pid];
 
-      // Drink heal potion if low HP
-      const healIdx = (hero.belt || []).findIndex((b) => b.type === 'heal' || b.id === 'G-27' || b.id === 'G-28');
-      if (healIdx >= 0 && hero.hp <= 5) {
-        dispatch({ type: 'clash-use-belt', beltIndex: healIdx }, pid);
+      // Drink heal potion (or whiff Solo Smelling Salts) if low HP
+      const isSoloRun = partySize === 1;
+      const healIdx = (hero.belt || []).findIndex((b) => {
+        const gid = b.gearId || b.id;
+        return (
+          b.type === 'heal' ||
+          gid === 'G-27' ||
+          gid === 'G-28' ||
+          (isSoloRun && (gid === 'G-25' || gid === 'G-26'))
+        );
+      });
+      if (healIdx >= 0 && hero.hp <= 6) {
+        dispatch({ type: 'clash-use-belt', beltIndex: healIdx, mode: 'heal' }, pid);
         continue;
       }
 
@@ -225,12 +235,29 @@ function runSingleSim(index, partySize) {
       const downedMate = state.turnOrder.find(
         (pid) => pid !== activeId && state.heroes[pid]?.downed && state.heroes[pid].roomKey === hero.roomKey,
       );
-      if (downedMate && hero.belt?.some((b) => b.type === 'revive' || b.id === 'G-25' || b.id === 'G-26')) {
+      if (downedMate && tile?.kind === 'shrine') {
         dispatch({ type: 'interact', subtype: 'revive', targetPlayerId: downedMate }, activeId);
         continue;
       }
-      if (downedMate && tile?.kind === 'shrine') {
-        dispatch({ type: 'interact', subtype: 'shrine' }, activeId);
+      const saltsIdx = (hero.belt || []).findIndex((b) => {
+        const gid = b.gearId || b.id;
+        return b.type === 'revive' || gid === 'G-25' || gid === 'G-26';
+      });
+      if (downedMate && saltsIdx >= 0) {
+        dispatch(
+          { type: 'interact', subtype: 'use-consumable', beltIndex: saltsIdx, targetPlayerId: downedMate },
+          activeId,
+        );
+        continue;
+      }
+      if (partySize === 1 && saltsIdx >= 0 && hero.hp <= 7) {
+        dispatch({ type: 'interact', subtype: 'use-consumable', beltIndex: saltsIdx }, activeId);
+        continue;
+      }
+
+      // Free Group Descent if unlocked stairs already has a conscious hero
+      if (state.floor?.stairsUnlocked && tile?.kind === 'stairs' && !tile.locked) {
+        dispatch({ type: 'descend-stairs' }, activeId);
         continue;
       }
 
@@ -244,15 +271,18 @@ function runSingleSim(index, partySize) {
         continue;
       }
 
-      // Boss gather: if boss tile is waiting and this hero is inside, wait for allies or start
+      // Boss gather (rules_07): wait at most 2 rounds (partySize * 2 turns) and never wait on downed/blocked allies
       const gather = bossGather(state);
       if (gather.waiting && gather.heroIds.includes(activeId)) {
-        const consciousCount = Object.values(state.heroes).filter((h) => !h.downed).length;
-        if (gather.heroIds.length >= consciousCount || steps > 180) {
+        const unblockedOutside = Object.entries(state.heroes).filter(([pid, h]) => {
+          if (h.downed || gather.heroIds.includes(pid)) return false;
+          return Boolean(bfsNextStep(state, h.roomKey, (t) => t.kind === 'boss'));
+        });
+        bossWaitTurns += 1;
+        if (unblockedOutside.length === 0 || bossWaitTurns >= partySize * 2) {
           dispatch({ type: 'start-boss-clash' }, dealerId);
           continue;
         }
-        // Stay inside Boss Chamber while waiting for allies
         dispatch({ type: 'end-turn', playerId: activeId }, activeId);
         continue;
       }

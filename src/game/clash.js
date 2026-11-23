@@ -1,7 +1,13 @@
+import { getHero } from '../data/heroes.js';
+
 /**
  * Clash & Chain helpers — suit/rank matching from rulebook §4.
  * Dealer machine remains authority; this module is pure logic.
  */
+
+function defaultBigSwingBonus() {
+  return Number(getHero('H-01')?.perk?.rankBonus ?? 2);
+}
 
 export function isCramp(card) {
   return card?.type === 'cramp';
@@ -69,9 +75,10 @@ export function isLegalPlay(card, clash, options = {}) {
   if (card.suit === activeSuit) return true;
   if (card.rank != null && Number(card.rank) === Number(activeRank)) return true;
 
-  // Big Swing: Brawn card with +1 rank may match active rank for Parry legality
+  // Big Swing: Brawn card with +rankBonus rank may match active rank for Parry legality
   if (bigSwing && card.suit === 'brawn' && card.rank != null) {
-    if (Number(card.rank) + 1 === Number(activeRank)) return true;
+    const bonus = Number(options.bigSwingBonus ?? defaultBigSwingBonus());
+    if (Number(card.rank) + bonus === Number(activeRank)) return true;
   }
 
   // Fizzlewig defensive: Spark as any suit at Rank 2
@@ -89,7 +96,9 @@ export function classifyPlay(card, clash, options = {}) {
   const activeSuit = clash.activeSuit;
   const activeRank = Number(clash.activeRank);
   let rank = Number(card.rank);
-  if (bigSwing && card.suit === 'brawn') rank += 1;
+  if (bigSwing && card.suit === 'brawn') {
+    rank += Number(options.bigSwingBonus ?? defaultBigSwingBonus());
+  }
 
   if (defensiveSparkAsAny && card.suit === 'spark' && card.suit !== activeSuit) {
     // Counts as Rank 2 vs active — classify vs activeRank
@@ -142,7 +151,10 @@ export function afterPlayUpdateActive(clash, card, chosenSuit = null, options = 
     return;
   }
   let rank = card.rank;
-  if (options.bigSwing && card.suit === 'brawn') rank = Number(card.rank) + 1;
+  if (options.bigSwing && card.suit === 'brawn') {
+    const bonus = Number(options.bigSwingBonus ?? defaultBigSwingBonus());
+    rank = Math.min(6, Number(card.rank) + bonus);
+  }
   clash.activeSuit = card.suit;
   clash.activeRank = rank;
 }
