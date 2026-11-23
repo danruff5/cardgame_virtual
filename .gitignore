@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
+.playtest-data/
+scripts/playtest/node_modules/
 
 # Source PNGs stay in sibling cardgame/; optimized WebP lives in public/assets (committed)
 public/assets/optimize-report.txt

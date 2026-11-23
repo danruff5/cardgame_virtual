@@ -15,6 +15,7 @@ import {
 } from './ui/coachmarks.js';
 import { syncClashModal, wireTableLogHovers } from './ui/clashModal.js';
 import { renderTable } from './ui/tableView.js';
+import { mountMonitorView } from './ui/monitorView.js';
 
 document.documentElement.style.setProperty(
   '--bg-art',
@@ -89,8 +90,26 @@ const room = new PeerRoom({
 
 session.room = room;
 
+if (typeof window !== 'undefined') {
+  window.__CBC_STATE__ = () => ({
+    state: session.state,
+    meta: session.meta,
+    status: session.status,
+    error: session.error,
+  });
+}
+
+const isMonitorMode =
+  typeof window !== 'undefined' &&
+  (new URLSearchParams(window.location.search).get('monitor') === '1' ||
+    window.location.hash === '#monitor');
+
 const pendingRoom = readRoomFromUrl();
-render();
+if (isMonitorMode) {
+  mountMonitorView(app);
+} else {
+  render();
+}
 
 function render() {
   const isTable = Boolean(session.state && session.state.phase !== 'lobby');
@@ -156,6 +175,7 @@ function statusBar() {
       <span class="pill">Room <strong>${escapeHtml(code)}</strong></span>
       <span class="pill">You: <strong>${escapeHtml(role)}</strong></span>
       <span>${escapeHtml(session.status)}</span>
+      <a class="monitor-link-pill" href="?monitor=1" target="_blank" rel="noopener">Monitor</a>
       ${session.error ? `<span class="error">${escapeHtml(session.error)}</span>` : ''}
     </div>
   `;
