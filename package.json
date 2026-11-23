@@ -10,6 +10,7 @@
     "deploy": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "sync-cards": "node d:/Projects/cardgame/tools/sync_cards.mjs --virtual .",
     "assets": "node ./scripts/optimize-assets.mjs",
     "optimize-assets": "node ./scripts/optimize-assets.mjs"
   },

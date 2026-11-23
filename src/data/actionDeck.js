@@ -1,28 +1,23 @@
+import { CATALOG } from './catalog.js';
 import { SUIT_IDS } from './suits.js';
 
 /**
- * Shared Action Deck — exact 68 cards from action_and_desperation_decks_f070.md
- * Per suit: ranks 1×3, 2×3, 3×3, 4×2, 5×1, 6×1, Daze!, Bounce Back!, Tuckered Out! (+2)
- * Plus 4 Heroic Wild!
+ * Shared Action Deck & Cramp! deck derived from canonical cards.json.
  */
-
-const RANK_COPIES = { 1: 3, 2: 3, 3: 3, 4: 2, 5: 1, 6: 1 };
-const SPECIALS = [
-  { kind: 'daze', name: 'Daze!' },
-  { kind: 'bounce', name: 'Bounce Back!' },
-  { kind: 'tuckered', name: 'Tuckered Out! (+2)' },
-];
-
 function makeInstanceId(parts) {
   return parts.join('-');
 }
 
-/** Build a fresh ordered catalog of all 68 action card definitions (unique instance ids). */
 export function buildActionDeckCatalog() {
   const cards = [];
+  const rankDist = CATALOG.actionDeck.rankDistribution;
+  const specials = CATALOG.actionDeck.specials;
+  const wildDef = CATALOG.actionDeck.wild;
+
   for (const suit of SUIT_IDS) {
-    for (const [rankStr, copies] of Object.entries(RANK_COPIES)) {
+    for (const [rankStr, info] of Object.entries(rankDist)) {
       const rank = Number(rankStr);
+      const copies = Number(info.copies);
       for (let n = 1; n <= copies; n += 1) {
         cards.push({
           id: makeInstanceId(['A', suit, `r${rank}`, n]),
@@ -33,7 +28,7 @@ export function buildActionDeckCatalog() {
         });
       }
     }
-    for (const special of SPECIALS) {
+    for (const special of specials) {
       cards.push({
         id: makeInstanceId(['A', suit, special.kind]),
         type: 'special',
@@ -43,27 +38,27 @@ export function buildActionDeckCatalog() {
       });
     }
   }
-  for (let n = 1; n <= 4; n += 1) {
+  for (let n = 1; n <= Number(wildDef.copies); n += 1) {
     cards.push({
       id: makeInstanceId(['A', 'wild', n]),
       type: 'wild',
       suit: 'wild',
       kind: 'wild',
-      name: 'Heroic Wild!',
+      name: wildDef.name,
     });
   }
   return cards;
 }
 
-/** Exactly 12 Cramp! fatigue cards. */
 export function buildCrampDeck() {
-  return Array.from({ length: 12 }, (_, i) => ({
+  const crampDef = CATALOG.actionDeck.cramp;
+  return Array.from({ length: Number(crampDef.copies) }, (_, i) => ({
     id: `C-${String(i + 1).padStart(2, '0')}`,
     type: 'cramp',
-    name: 'Cramp!',
-    rule: 'Unplayable on Clash Pile. Discard up to 2 Cramp! instead of playing. All clear at end of combat.',
+    name: crampDef.name,
+    rule: crampDef.rule,
   }));
 }
 
-export const ACTION_DECK_SIZE = 68;
-export const CRAMP_DECK_SIZE = 12;
+export const ACTION_DECK_SIZE = buildActionDeckCatalog().length;
+export const CRAMP_DECK_SIZE = Number(CATALOG.actionDeck.cramp.copies);
