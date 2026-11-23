@@ -1,0 +1,10 @@
+{
+  "name": "cbc-playtest-tooling",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "peer": "^1.0.2",
+    "playwright-core": "^1.51.0"
+  }
+}

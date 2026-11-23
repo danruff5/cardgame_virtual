@@ -3,6 +3,7 @@ import { makeRoomCode, peerIdForRoom, uid } from '../game/util.js';
 import { createEmptyState } from '../game/state.js';
 import { applyAction, viewForPlayer } from '../game/authority.js';
 import { resolvePeerOptions, ROOM_QUERY_PARAM } from './peerConfig.js';
+import { createTelemetryTracker } from '../analytics/telemetry.js';
 
 /**
  * Dealer-host PeerJS room.
@@ -24,6 +25,8 @@ export class PeerRoom {
     this.connections = new Map(); // peerId -> DataConnection (host only)
     this.hostConn = null; // client → host
     this.busy = false;
+    this.telemetry = null;
+    this._unloadHandler = null;
   }
 
   _status(msg) {
@@ -73,6 +76,19 @@ export class PeerRoom {
       throw err;
     }
     this.state = createEmptyState(this.roomCode, this.playerId, this.playerName);
+    const params =
+      typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    this.telemetry = createTelemetryTracker({
+      roomCode: this.roomCode,
+      source: params?.get('source') || 'ui-playtest',
+      batchId: params?.get('batch') || null,
+      testerLabel: params?.get('tester') || null,
+    });
+    this.telemetry.onState(null, this.state, { type: 'host-open' });
+    if (typeof window !== 'undefined') {
+      this._unloadHandler = () => this.telemetry?.flush();
+      window.addEventListener('beforeunload', this._unloadHandler);
+    }
 
     this.peer.on('connection', (conn) => {
       this._wireHostConnection(conn);
@@ -181,6 +197,12 @@ export class PeerRoom {
   }
 
   destroy() {
+    this.telemetry?.flush();
+    if (typeof window !== 'undefined' && this._unloadHandler) {
+      window.removeEventListener('beforeunload', this._unloadHandler);
+      this._unloadHandler = null;
+    }
+    this.telemetry = null;
     for (const conn of this.connections.values()) {
       try {
         conn.close();
@@ -308,12 +330,15 @@ export class PeerRoom {
   }
 
   _hostApply(action, actorId) {
+    const prevState = this.state;
     const result = applyAction(this.state, action, actorId);
     if (!result.ok) {
+      this.telemetry?.onRejected(action, result.error);
       this._error(result.error);
       return;
     }
     this.state = result.state;
+    this.telemetry?.onState(prevState, this.state, action);
     this._broadcastAll();
     this._emitState();
   }

@@ -20,15 +20,20 @@ export const PEER_DEFAULTS = {
 };
 
 export function resolvePeerOptions() {
-  const host = localStorage.getItem('cbc-peer-host');
+  const params =
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const host = params?.get('peerHost') || (typeof localStorage !== 'undefined' ? localStorage.getItem('cbc-peer-host') : null);
   if (!host) {
     return { ...PEER_DEFAULTS };
   }
+  const portRaw = params?.get('peerPort') ?? (typeof localStorage !== 'undefined' ? localStorage.getItem('cbc-peer-port') : null);
+  const pathRaw = params?.get('peerPath') ?? (typeof localStorage !== 'undefined' ? localStorage.getItem('cbc-peer-path') : null);
+  const secureRaw = params?.get('peerSecure') ?? (typeof localStorage !== 'undefined' ? localStorage.getItem('cbc-peer-secure') : null);
   return {
     host,
-    port: Number(localStorage.getItem('cbc-peer-port') || 443),
-    path: localStorage.getItem('cbc-peer-path') || '/',
-    secure: localStorage.getItem('cbc-peer-secure') !== 'false',
+    port: Number(portRaw || 443),
+    path: pathRaw || '/',
+    secure: secureRaw !== 'false',
     debug: 1,
   };
 }

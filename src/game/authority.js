@@ -1,4 +1,5 @@
 import {
+  RULES,
   getHero,
   getGear,
   THEMES,
@@ -139,8 +140,8 @@ export function applyAction(state, action, actorId) {
         for (const h of heroes) {
           next.heroes[h.id] = createHeroRuntime(h.heroId, solo);
           next.heroes[h.id].roomKey = entrance.key;
-          // Deal 4 action cards
-          for (let i = 0; i < 4; i += 1) {
+          // Deal starting action cards
+          for (let i = 0; i < (RULES.startingActionHand || 4); i += 1) {
             if (next.decks.action.length) {
               next.heroes[h.id].hand.push(next.decks.action.shift());
             }
@@ -148,7 +149,7 @@ export function applyAction(state, action, actorId) {
         }
         next.turnOrder = heroes.map((h) => h.id);
         next.activeHeroIndex = 0;
-        next.explorationActionsLeft = 2;
+        next.explorationActionsLeft = RULES.explorationActionsPerTurn || 2;
         next.phase = 'exploring';
         next.floor = { bossDefeated: false, stairsUnlocked: false, shinyKey: false };
         const theme = THEMES.find((t) => t.id === next.themeId);
@@ -156,7 +157,7 @@ export function applyAction(state, action, actorId) {
         const stairsDist = next.map.stairsDistance ?? '?';
         appendLog(
           next,
-          `Floor 1 begins! Theme: ${theme.name}. Boss waiting: ${boss.name} (${bossHp(next.bossId, 1)} HP, +3 per extra Hero in the fight).`,
+          `Floor 1 begins! Theme: ${theme.name}. Boss waiting: ${boss.name} (${bossHp(next.bossId, 1)} HP, +${RULES.bossHpPerExtraHero} per extra Hero in the fight).`,
         );
         appendLog(
           next,
@@ -501,6 +502,14 @@ export function applyAction(state, action, actorId) {
           appendLog(next, `${hero.name} sips ${def.name} mid-clash (+${def.heal || 4} HP → ${hero.hp}).`);
           break;
         }
+        if (def?.type === 'revive' && Object.keys(next.heroes).length === 1 && (def.soloHeal || RULES.smellingSaltsSoloHeal) > 0) {
+          if (hero.hp >= hero.maxHp) return fail(next, 'Already at full HP');
+          const soloHeal = def.soloHeal || RULES.smellingSaltsSoloHeal || 3;
+          hero.belt.splice(beltIdx, 1);
+          hero.hp = Math.min(hero.maxHp, hero.hp + soloHeal);
+          appendLog(next, `${hero.name} takes a quick whiff of ${def.name} mid-clash (+${soloHeal} HP → ${hero.hp}).`);
+          break;
+        }
         return fail(next, 'That belt item cannot be used in clash');
       }
 
@@ -585,6 +594,21 @@ export function applyAction(state, action, actorId) {
         break;
       }
 
+      case 'descend-stairs': {
+        if (next.phase !== 'exploring') return fail(next, 'Not exploring');
+        if (next.pending) return fail(next, 'Resolve the pending room prompt first');
+        if (!next.floor?.stairsUnlocked) return fail(next, 'Stairway Down is still locked');
+        const stairsTile = next.map.tiles.find((t) => t.kind === 'stairs');
+        if (!stairsTile || stairsTile.locked) return fail(next, 'Stairway Down is still locked');
+        const onStairs = Object.entries(next.heroes).find(
+          ([, h]) => !h.downed && h.roomKey === stairsTile.key,
+        );
+        if (!onStairs) return fail(next, 'A conscious Hero must reach the Stairway Down first');
+        const leaderName = next.players.find((p) => p.id === onStairs[0])?.name || onStairs[1].name;
+        finishFloor(next, `${leaderName} leads the Group Descent down the Spiral Slide!`);
+        break;
+      }
+
       case 'end-floor': {
         if (actor.role !== 'dealer') return fail(next, 'Dealer only');
         if (next.phase === 'lobby') return fail(next, 'Floor not started');
@@ -626,6 +650,19 @@ export function applyAction(state, action, actorId) {
             break;
           }
           if (def.type === 'revive') {
+            const isSolo = Object.keys(next.heroes).length === 1;
+            const soloHeal = def.soloHeal || RULES.smellingSaltsSoloHeal || 0;
+            if (isSolo && soloHeal > 0 && (!action.targetPlayerId || action.targetPlayerId === heroPid)) {
+              if (hero.downed) return fail(next, 'DOWNED heroes cannot use smelling salts');
+              if (actor.role !== 'dealer' && actorId !== heroPid) {
+                return fail(next, 'Cannot use another hero consumable');
+              }
+              if (hero.hp >= hero.maxHp) return fail(next, 'Already at full HP');
+              hero.belt.splice(beltIdx, 1);
+              hero.hp = Math.min(hero.maxHp, hero.hp + soloHeal);
+              appendLog(next, `${playerName} takes a quick whiff of ${def.name} (+${soloHeal} HP → ${hero.hp}).`);
+              break;
+            }
             if (next.turnOrder[next.activeHeroIndex] !== heroPid && actor.role !== 'dealer') {
               return fail(next, 'Not your turn');
             }
@@ -639,10 +676,12 @@ export function applyAction(state, action, actorId) {
             next.explorationActionsLeft -= 1;
             hero.belt.splice(beltIdx, 1);
             ally.downed = false;
-            ally.hp = 4;
+            ally.hp = def.reviveHp || RULES.smellingSaltsReviveHp || 4;
             ally.hand = [];
-            for (let i = 0; i < 4; i += 1) drawAction(next, ally);
-            appendLog(next, `${playerName} uses ${def.name} — ${ally.name} wakes at 4 HP.`);
+            for (let i = 0; i < (def.reviveCards || RULES.smellingSaltsReviveCards || 4); i += 1) {
+              drawAction(next, ally);
+            }
+            appendLog(next, `${playerName} uses ${def.name} — ${ally.name} wakes at ${ally.hp} HP.`);
             maybeEndExplore(next);
             break;
           }
@@ -676,10 +715,11 @@ export function applyAction(state, action, actorId) {
         if (action.subtype === 'shrine') {
           if (tile.kind !== 'shrine') return fail(next, 'Not at the Sanctuary');
           if (hero.shrineUsedThisFloor) return fail(next, 'Already rested at Sanctuary this floor');
+          const healAmt = RULES.shrineRestHeal || 3;
           next.explorationActionsLeft -= 1;
           hero.shrineUsedThisFloor = true;
-          hero.hp = Math.min(hero.maxHp, hero.hp + 3);
-          appendLog(next, `${playerName} rests at the Cozy Cocoa Sanctuary (+3 HP → ${hero.hp}).`);
+          hero.hp = Math.min(hero.maxHp, hero.hp + healAmt);
+          appendLog(next, `${playerName} rests at the Cozy Cocoa Sanctuary (+${healAmt} HP → ${hero.hp}).`);
           maybeEndExplore(next);
           break;
         }
@@ -690,17 +730,20 @@ export function applyAction(state, action, actorId) {
           const ally = next.heroes[targetId];
           if (!ally?.downed) return fail(next, 'Target must be DOWNED in this room');
           if (ally.roomKey !== tile.key) return fail(next, 'Ally must share your room');
-          if (hero.shrineUsedThisFloor && heroPid === targetId) {
-            return fail(next, 'Already used Sanctuary this floor');
-          }
-          // Free revive per R-03 / rulebook §3 — costs the Interact action
+          // Free Ally Rescue per R-03 / rulebook §3 (rules_04): costs 1 Action, never consumes rescuer's personal Rest
           next.explorationActionsLeft -= 1;
-          hero.shrineUsedThisFloor = true;
+          if (RULES.shrineReviveConsumesPersonalRest) {
+            hero.shrineUsedThisFloor = true;
+          }
           ally.downed = false;
-          ally.hp = 5;
+          ally.hp = RULES.shrineReviveHp || 5;
           ally.hand = [];
-          for (let i = 0; i < 4; i += 1) drawAction(next, ally);
-          appendLog(next, `${playerName} revives ${ally.name} at the Sanctuary (5 HP + 4 cards).`);
+          const reviveCards = RULES.shrineReviveCards || 4;
+          for (let i = 0; i < reviveCards; i += 1) drawAction(next, ally);
+          appendLog(
+            next,
+            `${playerName} revives ${ally.name} at the Sanctuary (${ally.hp} HP + ${reviveCards} cards).`,
+          );
           maybeEndExplore(next);
           break;
         }
@@ -1020,11 +1063,12 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null, { fighterId
     lootText = m.loot || '';
   }
 
+  const topUpTarget = RULES.combatHandTopUp || 5;
   for (const fid of fighters) {
     const fighter = state.heroes[fid];
     fighter.perkUsedThisClash = false;
     while (
-      fighter.hand.filter((c) => c.type !== 'cramp').length < 4 &&
+      fighter.hand.filter((c) => c.type !== 'cramp').length < topUpTarget &&
       state.decks.action.length
     ) {
       fighter.hand.push(state.decks.action.shift());
@@ -1068,6 +1112,7 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null, { fighterId
     monsterDazed: false,
     ignoredFirstHit: false,
     usedDesperation: false,
+    encoreUsedThisRound: false,
     negateNextMonsterHit: false,
     pendingKoboldSwings: 0,
     twinRank: null,
@@ -1101,14 +1146,19 @@ function joinBossClash(state, heroPlayerId) {
   }
   const hero = state.heroes[heroPlayerId];
   hero.perkUsedThisClash = false;
-  while (hero.hand.filter((c) => c.type !== 'cramp').length < 4 && state.decks.action.length) {
+  const topUpTarget = RULES.combatHandTopUp || 5;
+  while (
+    hero.hand.filter((c) => c.type !== 'cramp').length < topUpTarget &&
+    state.decks.action.length
+  ) {
     hero.hand.push(state.decks.action.shift());
   }
   clash.fighters.push(heroPlayerId);
-  // Rescale boss HP for extra hero joining mid-fight: +3 max & current
-  clash.monsterMaxHp += 3;
-  clash.monsterHp += 3;
-  clash.bossEvery = clash.fighters.length > 1 ? 2 : 1;
+  // Rescale boss HP for extra hero joining mid-fight: +bossHpPerExtraHero max & current
+  const extraHp = RULES.bossHpPerExtraHero || 4;
+  clash.monsterMaxHp += extraHp;
+  clash.monsterHp += extraHp;
+  clash.bossEvery = clash.fighters.length > 1 ? RULES.bossTurnsPerHeroTurns || 2 : 1;
   appendLog(
     state,
     `${hero.name} piles into the Boss clash! (${clash.fighters.length} Heroes; Boss ${clash.monsterHp}/${clash.monsterMaxHp} HP).`,
@@ -1189,6 +1239,7 @@ function advanceAfterHeroTurn(state, { skipped = false } = {}) {
 function beginNextHeroCombatTurn(state) {
   const clash = state.clash;
   if (!clash) return;
+  clash.encoreUsedThisRound = false;
   const fighters = clash.fighters || [clash.heroPlayerId];
   const dir = clash.turnOrderDir || 1;
   const n = fighters.length;
@@ -1241,7 +1292,7 @@ function resolveHeroCardPlay(state, hero, card, wildSuit, playOpts = {}) {
 
   if (playOpts.bigSwing) {
     hero.perkUsedThisClash = true;
-    appendLog(state, `${hero.name} uses Big Swing (+1 Rank on Brawn)!`);
+    appendLog(state, `${hero.name} uses Big Swing (+${hero.perk?.rankBonus || 2} Rank on Brawn)!`);
   }
   if (playOpts.defensiveSparkAsAny) {
     hero.perkUsedThisClash = true;
@@ -1548,10 +1599,16 @@ function resolveDesperation(state, hero, action = {}) {
   const dealerSuit = action.dealerSuit || ['brawn', 'grit', 'zip', 'spark'][Math.floor(Math.random() * 4)];
   const baseId = card.id?.replace(/-.*/, '') || card.id;
 
-  // B-02 Theatrical Encore
+  // B-02 Theatrical Encore (rules_01: Messy Desperation only, max once per round)
   if (clash.traitId === 'theatrical-encore') {
-    clash.monsterHp = Math.min(clash.monsterMaxHp, clash.monsterHp + 1);
-    appendLog(state, `Theatrical Encore — ${clash.monsterName} heals 1 HP (${clash.monsterHp}).`);
+    const tierOk = !RULES.theatricalEncoreMessyOnly || card.tier === 'messy';
+    const capOk = !RULES.theatricalEncoreMaxPerRound || !clash.encoreUsedThisRound;
+    if (tierOk && capOk) {
+      clash.encoreUsedThisRound = true;
+      const healAmt = RULES.theatricalEncoreHeal || 1;
+      clash.monsterHp = Math.min(clash.monsterMaxHp, clash.monsterHp + healAmt);
+      appendLog(state, `Theatrical Encore — ${clash.monsterName} heals ${healAmt} HP (${clash.monsterHp}).`);
+    }
   }
 
   switch (baseId) {
@@ -1826,13 +1883,47 @@ function finishFloor(state, reason) {
   state.clash = null;
   state.explorationActionsLeft = 0;
   state.pending = null;
+
+  // rules_06: Narrative Time-Skip & Free Shrine Sweep when descending unlocked Stairs
+  if (RULES.stairsGroupShrineSweep) {
+    const shrineTile = state.map?.tiles?.find((t) => t.kind === 'shrine');
+    const shrineRevealed = Boolean(shrineTile?.faceUp);
+    for (const hero of Object.values(state.heroes)) {
+      if (hero.downed) {
+        hero.downed = false;
+        if (shrineRevealed) {
+          hero.hp = RULES.shrineReviveHp || 5;
+          hero.hand = [];
+          for (let i = 0; i < (RULES.shrineReviveCards || 4); i += 1) drawAction(state, hero);
+          appendLog(
+            state,
+            `Group Descent Shrine Sweep: ${hero.name} is carried to the Sanctuary Shrine (${hero.hp} HP + ${RULES.shrineReviveCards || 4} cards)!`,
+          );
+        } else {
+          hero.hp = 1;
+          appendLog(state, `Group Descent: ${hero.name} is carried to the stairs and wakes groggily at 1 HP.`);
+        }
+      }
+      if (shrineRevealed && !hero.shrineUsedThisFloor) {
+        const shrineHeal = RULES.shrineRestHeal || 3;
+        hero.shrineUsedThisFloor = true;
+        hero.hp = Math.min(hero.maxHp, hero.hp + shrineHeal);
+        appendLog(
+          state,
+          `Group Descent Shrine Sweep: ${hero.name} claims their free +${shrineHeal} HP Sanctuary Rest (${hero.hp} HP).`,
+        );
+      }
+    }
+  }
+
+  const clearHeal = RULES.floorClearHeal || 3;
   for (const hero of Object.values(state.heroes)) {
     if (hero.downed) continue;
-    hero.hp = Math.min(hero.maxHp, hero.hp + 3);
+    hero.hp = Math.min(hero.maxHp, hero.hp + clearHeal);
     hero.hand = hero.hand.filter((c) => !isCramp(c));
   }
   appendLog(state, reason);
-  appendLog(state, 'Floor 1 complete! Conscious Heroes heal +3 HP (checkpoint).');
+  appendLog(state, `Floor 1 complete! Heroes heal +${clearHeal} HP (checkpoint).`);
 }
 
 function endHeroExplorationTurn(state) {

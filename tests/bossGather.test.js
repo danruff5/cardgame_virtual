@@ -181,10 +181,10 @@ describe('start-boss-clash', () => {
     expect(r.error).toMatch(/pending/i);
   });
 
-  it('pulls in every conscious hero in the chamber and scales HP +3 per extra fighter', () => {
+  it('pulls in every conscious hero in the chamber and scales HP +4 per extra fighter', () => {
     const { state: base, dealerId, ids } = startParty(3);
     const { state } = gatheredInBossRoom(base, [ids[0], ids[1]]);
-    state.heroes[ids[1]].hand = []; // arrives empty-handed → topped up to 4
+    state.heroes[ids[1]].hand = []; // arrives empty-handed → topped up to 5
 
     const r = applyAction(state, { type: 'start-boss-clash' }, dealerId);
     expect(r.ok).toBe(true);
@@ -193,11 +193,11 @@ describe('start-boss-clash', () => {
     expect(clash.fighters).toEqual([ids[0], ids[1]]);
     expect(clash.heroPlayerId).toBe(ids[0]);
     expect(clash.monsterMaxHp).toBe(bossHp(state.bossId, 2));
-    expect(clash.monsterMaxHp).toBe(15);
-    expect(clash.monsterHp).toBe(15);
+    expect(clash.monsterMaxHp).toBe(14);
+    expect(clash.monsterHp).toBe(14);
     expect(clash.bossEvery).toBe(2);
     expect(clash.whoseTurn).toBe('hero');
-    expect(r.state.heroes[ids[1]].hand).toHaveLength(4);
+    expect(r.state.heroes[ids[1]].hand).toHaveLength(5);
     expect(r.state.explorationActionsLeft).toBe(0);
   });
 
@@ -210,7 +210,7 @@ describe('start-boss-clash', () => {
     const r = applyAction(state, { type: 'start-boss-clash' }, dealerId);
     expect(r.ok).toBe(true);
     expect(r.state.clash.fighters).toEqual([ids[0]]);
-    expect(r.state.clash.monsterMaxHp).toBe(12);
+    expect(r.state.clash.monsterMaxHp).toBe(10);
     expect(r.state.clash.bossEvery).toBe(1);
   });
 
@@ -228,7 +228,7 @@ describe('start-boss-clash', () => {
     const { state } = gatheredInBossRoom(base, [ids[2]]);
     const r = applyAction(state, { type: 'start-boss-clash' }, ids[2]);
     expect(r.ok).toBe(true);
-    expect(r.state.clash.monsterMaxHp).toBe(12);
+    expect(r.state.clash.monsterMaxHp).toBe(10);
     expect(r.state.clash.bossEvery).toBe(1);
   });
 });
@@ -248,15 +248,15 @@ describe('joining a Boss clash that is underway', () => {
     return { state: r.state, dealerId, ids, boss };
   }
 
-  it('a hero next door piles in: +3 max/current HP and co-op cadence', () => {
+  it('a hero next door piles in: +4 max/current HP and co-op cadence', () => {
     const { state, ids, boss } = soloBossClash();
-    expect(state.clash.monsterMaxHp).toBe(12);
+    expect(state.clash.monsterMaxHp).toBe(10);
 
     const r = applyAction(state, { type: 'join-boss-clash' }, ids[1]);
     expect(r.ok).toBe(true);
     expect(r.state.clash.fighters).toEqual([ids[0], ids[1]]);
-    expect(r.state.clash.monsterMaxHp).toBe(15);
-    expect(r.state.clash.monsterHp).toBe(15);
+    expect(r.state.clash.monsterMaxHp).toBe(14);
+    expect(r.state.clash.monsterHp).toBe(14);
     expect(r.state.clash.bossEvery).toBe(2);
     expect(r.state.heroes[ids[1]].roomKey).toBe(boss.key);
   });
@@ -270,7 +270,7 @@ describe('joining a Boss clash that is underway', () => {
     const viaMove = applyAction(state, { type: 'move', x: boss.x, y: boss.y }, ids[1]);
     expect(viaMove.ok).toBe(true);
     expect(viaMove.state.clash.fighters).toContain(ids[1]);
-    expect(viaMove.state.clash.monsterMaxHp).toBe(15);
+    expect(viaMove.state.clash.monsterMaxHp).toBe(14);
   });
 
   it('rejects heroes who are too far, downed, or already fighting', () => {

@@ -1,0 +1,1910 @@
+{
+  "schemaVersion": 1,
+  "gameTitle": "Cozy Basement Crawl",
+  "rulesVersion": "0.2.0",
+  "rules": {
+    "heroMaxHp": 10,
+    "startingActionHand": 4,
+    "combatHandTopUp": 5,
+    "explorationActionsPerTurn": 2,
+    "maxBeltSlots": 2,
+    "dealerStartingTwists": 1,
+    "dealerMaxTwists": 3,
+    "shrineRestHeal": 3,
+    "shrineReviveHp": 5,
+    "shrineReviveCards": 4,
+    "shrineReviveConsumesPersonalRest": false,
+    "smellingSaltsReviveHp": 4,
+    "smellingSaltsReviveCards": 4,
+    "smellingSaltsSoloHeal": 3,
+    "soloCharmReviveHp": 4,
+    "floorClearHeal": 3,
+    "bossBaseHp": 10,
+    "bossHpPerExtraHero": 4,
+    "bossTurnsPerHeroTurns": 2,
+    "theatricalEncoreHeal": 1,
+    "theatricalEncoreMessyOnly": true,
+    "theatricalEncoreMaxPerRound": 1,
+    "stairsGroupShrineSweep": true,
+    "bossStartWithoutBlockedAllies": true
+  },
+  "suits": {
+    "brawn": {
+      "id": "brawn",
+      "name": "Brawn",
+      "label": "BRAWN",
+      "color": "#D9483B",
+      "hex": "#D9483B",
+      "frame": "frame_brawn.png",
+      "icon": "icon_brawn.png",
+      "art": "art_suit_brawn.png",
+      "glyph": "M12 2L15 8L21 9L17 14L18 21L12 18L6 21L7 14L3 9L9 8Z"
+    },
+    "grit": {
+      "id": "grit",
+      "name": "Grit",
+      "label": "GRIT",
+      "color": "#2F6FB8",
+      "hex": "#2F6FB8",
+      "frame": "frame_grit.png",
+      "icon": "icon_grit.png",
+      "art": "art_suit_grit.png",
+      "glyph": "M12 2L20 5V11C20 16.5 16.6 20.8 12 22C7.4 20.8 4 16.5 4 11V5L12 2Z"
+    },
+    "zip": {
+      "id": "zip",
+      "name": "Zip",
+      "label": "ZIP",
+      "color": "#E3A723",
+      "hex": "#E3A723",
+      "frame": "frame_zip.png",
+      "icon": "icon_zip.png",
+      "art": "art_suit_zip.png",
+      "glyph": "M13 2L4 14H11L10 22L20 10H13L13 2Z"
+    },
+    "spark": {
+      "id": "spark",
+      "name": "Spark",
+      "label": "SPARK",
+      "color": "#7E4BB5",
+      "hex": "#7E4BB5",
+      "frame": "frame_spark.png",
+      "icon": "icon_spark.png",
+      "art": "art_suit_spark.png",
+      "glyph": "M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5Z"
+    },
+    "wild": {
+      "id": "wild",
+      "name": "Heroic Wild!",
+      "label": "WILD",
+      "color": "#D99B26",
+      "hex": "#D99B26",
+      "frame": "frame_wild.png",
+      "icon": "icon_wild.png",
+      "art": "art_wild_starburst.png",
+      "glyph": "M3 18H21V20H3V18ZM4 16L6 7L10 11L12 4L14 11L18 7L20 16H4Z"
+    }
+  },
+  "specialIcons": {
+    "daze": "icon_daze.png",
+    "bounce": "icon_bounce.png",
+    "tuckered": "icon_tuckered.png",
+    "wild": "icon_wild.png",
+    "cramp": "icon_tuckered.png"
+  },
+  "backs": {
+    "roomSquare": "back_room_square.png",
+    "action": "back_action.png",
+    "desperation": "back_desperation.png"
+  },
+  "actionDeck": {
+    "rankDistribution": {
+      "1": {
+        "copies": 3,
+        "printNote": "Quick opener or exact Rank 1 Parry!"
+      },
+      "2": {
+        "copies": 3,
+        "printNote": "Beats Rank 1 for Clean Strike; matches 2s."
+      },
+      "3": {
+        "copies": 3,
+        "printNote": "Solid clash card; feeds Snack-Pocket Plate."
+      },
+      "4": {
+        "copies": 2,
+        "printNote": "Heavy wallop! Blue 4 triggers Boom-Hammer."
+      },
+      "5": {
+        "copies": 1,
+        "printNote": "Big power hit! Beats most Floor 1 foes."
+      },
+      "6": {
+        "copies": 1,
+        "printNote": "Top Rank in Suit! Hard to beat without Parry."
+      }
+    },
+    "specials": [
+      {
+        "kind": "daze",
+        "idSuffix": "DAZE",
+        "name": "Daze!",
+        "rankBadge": "★",
+        "icon": "icon_daze.png",
+        "glyph": "M12 3A9 9 0 1 0 21 12H18A6 6 0 1 1 12 6V3Z",
+        "printRulesTemplate": "Play on <b>{SUIT}</b> or another <b>Daze!</b>. Target misses their next turn; you play again right away!",
+        "tipRulesTemplate": "Play on {SUIT} or another Daze!. Target misses their next turn; you play again!",
+        "flavor": "Whoa... shiny spinning stars!"
+      },
+      {
+        "kind": "bounce",
+        "idSuffix": "BOUNCE",
+        "name": "Bounce Back!",
+        "rankBadge": "⇄",
+        "icon": "icon_bounce.png",
+        "glyph": "M7 7H17V4L21 8L17 12V9H7V7ZM17 17H7V20L3 16L7 12V15H17V17Z",
+        "printRulesTemplate": "Play on <b>{SUIT}</b> or <b>Bounce Back!</b>. Reflects <b>1 Dmg</b> back; flips Boss table turn order!",
+        "tipRulesTemplate": "Play on {SUIT} or Bounce Back!. Reflects 1 Dmg; flips Boss table turn order!",
+        "flavor": "Boing! Right back at ya!"
+      },
+      {
+        "kind": "tuckered",
+        "idSuffix": "TUCK",
+        "name": "Tuckered Out! (+2)",
+        "rankBadge": "+2",
+        "icon": "icon_tuckered.png",
+        "glyph": "M4 6H20V16H4V6ZM7 9V13H17V9H7Z",
+        "printRulesTemplate": "Play on <b>{SUIT}</b> or <b>Tuckered Out!</b>. <b>Monster:</b> takes <b>2 direct Dmg</b>! <b>Hero:</b> draws <b>2 Cramp!</b> cards.",
+        "tipRulesTemplate": "Play on {SUIT} or Tuckered Out!. Monster: 2 direct Dmg. Hero: draw 2 Cramp!.",
+        "flavor": "Oof, time for a quick breather..."
+      }
+    ],
+    "wild": {
+      "copies": 4,
+      "name": "Heroic Wild!",
+      "badge": "ANY SUIT",
+      "rankBadge": "W",
+      "printRulesHtml": "Play on <b>ANY card</b>! Deal Weapon Strike damage (or Monster Base Dmg) and pick the new <b>Active Suit</b>. (Stunt auto-pass!)",
+      "tipRules": "Play on ANY card! Deal Weapon Strike damage and pick the new Active Suit.",
+      "flavor": "Cue the heroic trumpet fanfare!"
+    },
+    "cramp": {
+      "copies": 12,
+      "name": "Cramp!",
+      "badge": "FATIGUE",
+      "accent": "#B86B82",
+      "frame": "frame_cramp.png",
+      "art": "art_cramp_charley_horse.png",
+      "icon": "icon_tuckered.png",
+      "glyph": "M5 5L19 19M19 5L5 19",
+      "rule": "Unplayable on Clash Pile. Discard up to 2 Cramp! instead of playing. All clear at end of combat.",
+      "printRulesHtml": "<b>Unplayable on Clash Pile.</b> Clutters your hand.<br>Instead of playing a combat card, discard up to <b>2 Cramp!</b> cards to stretch (still draw 1). Clears when combat ends.",
+      "flavor": "Ouch! Too many dramatic swings without stretching!"
+    }
+  },
+  "desperation": [
+    {
+      "id": "D-01",
+      "title": "Banana-Peel Lunge",
+      "tier": "messy",
+      "art": "art_desp_mishap.png",
+      "outcome": "Deal 1 Dmg to Monster, take 1 Dmg.",
+      "reset": "Dealer picks Active Suit; Rank → 1",
+      "printRulesHtml": "Deal <b>1 Dmg</b>, take <b>1 Dmg</b>. Reset: Dealer picks <b>Suit</b>, Rank <b>1</b>.",
+      "flavor": "Who left peel trash in a dungeon?!"
+    },
+    {
+      "id": "D-02",
+      "title": "Banana-Peel Lunge",
+      "tier": "messy",
+      "art": "art_desp_mishap.png",
+      "outcome": "Deal 1 Dmg to Monster, take 1 Dmg.",
+      "reset": "Dealer picks Active Suit; Rank → 1",
+      "printRulesHtml": "Deal <b>1 Dmg</b>, take <b>1 Dmg</b>. Reset: Dealer picks <b>Suit</b>, Rank <b>1</b>.",
+      "flavor": "Whoa—look out below!"
+    },
+    {
+      "id": "D-03",
+      "title": "Banana-Peel Lunge",
+      "tier": "messy",
+      "art": "art_desp_mishap.png",
+      "outcome": "Deal 1 Dmg to Monster, take 1 Dmg.",
+      "reset": "Dealer picks Active Suit; Rank → 1",
+      "printRulesHtml": "Deal <b>1 Dmg</b>, take <b>1 Dmg</b>. Reset: Dealer picks <b>Suit</b>, Rank <b>1</b>.",
+      "flavor": "Ten points for style, zero for balance."
+    },
+    {
+      "id": "D-04",
+      "title": "Dropped the Sword!",
+      "tier": "messy",
+      "art": "art_desp_mishap.png",
+      "outcome": "Take 2 Dmg; Dealer draws 1 Twist Card.",
+      "reset": "Suit stays; Rank → 1",
+      "printRulesHtml": "Take <b>2 Dmg</b>; Dealer draws <b>1 Twist</b>. Reset: same Suit, Rank <b>1</b>.",
+      "flavor": "Clank! Uh... five-second rule?"
+    },
+    {
+      "id": "D-05",
+      "title": "Dropped the Sword!",
+      "tier": "messy",
+      "art": "art_desp_mishap.png",
+      "outcome": "Take 2 Dmg; Dealer draws 1 Twist Card.",
+      "reset": "Suit stays; Rank → 1",
+      "printRulesHtml": "Take <b>2 Dmg</b>; Dealer draws <b>1 Twist</b>. Reset: same Suit, Rank <b>1</b>.",
+      "flavor": "Wait, my butterfingers aren't certified!"
+    },
+    {
+      "id": "D-06",
+      "title": "Giant Sneeze!",
+      "tier": "messy",
+      "art": "art_desp_mishap.png",
+      "outcome": "Monster draws 2 Action cards; Hero takes 1 Cramp!.",
+      "reset": "Dealer picks Active Suit; Rank → 2",
+      "printRulesHtml": "Monster draws <b>2 Action</b> cards; take <b>1 Cramp!</b>. Dealer picks <b>Suit</b>, Rank <b>2</b>.",
+      "flavor": "ACHOO! Sorry, was that your helmet?"
+    },
+    {
+      "id": "D-07",
+      "title": "Giant Sneeze!",
+      "tier": "messy",
+      "art": "art_desp_mishap.png",
+      "outcome": "Monster draws 2 Action cards; Hero takes 1 Cramp!.",
+      "reset": "Dealer picks Active Suit; Rank → 2",
+      "printRulesHtml": "Monster draws <b>2 Action</b> cards; take <b>1 Cramp!</b>. Dealer picks <b>Suit</b>, Rank <b>2</b>.",
+      "flavor": "Dusty basements are no joke."
+    },
+    {
+      "id": "D-08",
+      "title": "Tangled Shoelaces",
+      "tier": "messy",
+      "art": "art_desp_mishap.png",
+      "outcome": "Discard 1 random card from hand & take 1 Cramp!; deal 0 Dmg.",
+      "reset": "Suit stays; Rank → 1",
+      "printRulesHtml": "Discard <b>1 random</b> hand card & take <b>1 Cramp!</b>; deal <b>0 Dmg</b>. Same Suit, Rank <b>1</b>.",
+      "flavor": "Double-knotted right together!"
+    },
+    {
+      "id": "D-09",
+      "title": "Tangled Shoelaces",
+      "tier": "messy",
+      "art": "art_desp_mishap.png",
+      "outcome": "Discard 1 random card from hand & take 1 Cramp!; deal 0 Dmg.",
+      "reset": "Suit stays; Rank → 1",
+      "printRulesHtml": "Discard <b>1 random</b> hand card & take <b>1 Cramp!</b>; deal <b>0 Dmg</b>. Same Suit, Rank <b>1</b>.",
+      "flavor": "Hop-hop-bonk!"
+    },
+    {
+      "id": "D-10",
+      "title": "Wardrobe Malfunction",
+      "tier": "messy",
+      "art": "art_desp_mishap.png",
+      "outcome": "Tap 1 untapped Shield or Armor (or take 2 Dmg if none); deal 1 Dmg.",
+      "reset": "Suit stays; Rank → 2",
+      "printRulesHtml": "<b>Tap (90&deg;)</b> 1 Shield/Armor (or take <b>2 Dmg</b>); deal <b>1 Dmg</b>. Same Suit, Rank <b>2</b>.",
+      "flavor": "My belt buckle popped across the room!"
+    },
+    {
+      "id": "D-11",
+      "title": "Wardrobe Malfunction",
+      "tier": "messy",
+      "art": "art_desp_mishap.png",
+      "outcome": "Tap 1 untapped Shield or Armor (or take 2 Dmg if none); deal 1 Dmg.",
+      "reset": "Suit stays; Rank → 2",
+      "printRulesHtml": "<b>Tap (90&deg;)</b> 1 Shield/Armor (or take <b>2 Dmg</b>); deal <b>1 Dmg</b>. Same Suit, Rank <b>2</b>.",
+      "flavor": "Helmet fell right over my eyes!"
+    },
+    {
+      "id": "D-12",
+      "title": "Boo-Boo Backfire",
+      "tier": "messy",
+      "art": "art_desp_mishap.png",
+      "outcome": "Take 2 Dmg; Monster heals 1 HP.",
+      "reset": "Active Suit → Spark; Rank 3",
+      "printRulesHtml": "Take <b>2 Dmg</b>; Monster heals <b>1 HP</b>. Reset: <b>Spark (Purple)</b>, Rank <b>3</b>.",
+      "flavor": "Oops, pointed the sparky end inward!"
+    },
+    {
+      "id": "D-13",
+      "title": "Brave Backward Sprint",
+      "tier": "messy",
+      "art": "art_desp_mishap.png",
+      "outcome": "Deal 0 Dmg; Dealer may swap 2 unflipped Rooms OR draw 1 Twist.",
+      "reset": "Suit stays; Rank → 1",
+      "printRulesHtml": "Deal <b>0 Dmg</b>; Dealer swaps 2 unflipped Rooms OR draws <b>1 Twist</b>. Same Suit, Rank <b>1</b>.",
+      "flavor": "Strategically advancing... away!"
+    },
+    {
+      "id": "D-14",
+      "title": "Lucky Elbow Poke",
+      "tier": "neutral",
+      "art": "art_desp_scrappy.png",
+      "outcome": "Deal 1 Dmg to Monster.",
+      "reset": "Hero picks Active Suit; Rank → 1",
+      "printRulesHtml": "Deal <b>1 Dmg</b> to Monster. Reset: Hero picks <b>Suit</b>, Rank <b>1</b>.",
+      "flavor": "Hey! That actually worked!"
+    },
+    {
+      "id": "D-15",
+      "title": "Lucky Elbow Poke",
+      "tier": "neutral",
+      "art": "art_desp_scrappy.png",
+      "outcome": "Deal 1 Dmg to Monster.",
+      "reset": "Hero picks Active Suit; Rank → 1",
+      "printRulesHtml": "Deal <b>1 Dmg</b> to Monster. Reset: Hero picks <b>Suit</b>, Rank <b>1</b>.",
+      "flavor": "Boop right on the nose!"
+    },
+    {
+      "id": "D-16",
+      "title": "Quick Snack Break",
+      "tier": "neutral",
+      "art": "art_desp_scrappy.png",
+      "outcome": "Heal 1 HP; draw 1 Action card; Hero turn ends.",
+      "reset": "Suit stays; Rank → 1",
+      "printRulesHtml": "Heal <b>1 HP</b>; draw <b>1 Action</b> card; Hero turn ends. Same Suit, Rank <b>1</b>.",
+      "flavor": "Hold on, half a granola bar left!"
+    },
+    {
+      "id": "D-17",
+      "title": "Quick Snack Break",
+      "tier": "neutral",
+      "art": "art_desp_scrappy.png",
+      "outcome": "Heal 1 HP; draw 1 Action card; Hero turn ends.",
+      "reset": "Suit stays; Rank → 1",
+      "printRulesHtml": "Heal <b>1 HP</b>; draw <b>1 Action</b> card; Hero turn ends. Same Suit, Rank <b>1</b>.",
+      "flavor": "Crunchy oats restore 100% enthusiasm!"
+    },
+    {
+      "id": "D-18",
+      "title": "Panicked Duck",
+      "tier": "neutral",
+      "art": "art_desp_scrappy.png",
+      "outcome": "Negate Monster's next hit cleanly.",
+      "reset": "Hero picks Active Suit; Rank → 2",
+      "printRulesHtml": "Negate Monster's next hit cleanly. Reset: Hero picks <b>Suit</b>, Rank <b>2</b>.",
+      "flavor": "Duck! Not a bird—GET DOWN!"
+    },
+    {
+      "id": "D-19",
+      "title": "Accidental Mega-Crit!",
+      "tier": "miracle",
+      "art": "art_desp_miracle.png",
+      "outcome": "Deal Weapon Strike +2 Dmg (ignores Monster Armor!).",
+      "reset": "Hero picks Active Suit; Rank → 1",
+      "printRulesHtml": "Deal <b>Weapon Strike +2 Dmg</b> (ignores Armor!). Hero picks <b>Suit</b>, Rank <b>1</b>.",
+      "flavor": "I totally meant to hit that chandelier!"
+    },
+    {
+      "id": "D-20",
+      "title": "Wait, What's in My Pocket?",
+      "tier": "miracle",
+      "art": "art_desp_miracle.png",
+      "outcome": "Deal 1 Dmg and draw 1 Belt Consumable (keep or swap).",
+      "reset": "Hero picks Active Suit; Rank → 1",
+      "printRulesHtml": "Deal <b>1 Dmg</b> and draw <b>1 Belt Consumable</b>. Hero picks <b>Suit</b>, Rank <b>1</b>.",
+      "flavor": "A spare pie?! Eat THIS!"
+    }
+  ],
+  "heroes": [
+    {
+      "id": "H-01",
+      "name": "Sir Bumbles",
+      "title": "the Enthusiastic Knight",
+      "printSubtitle": "Enthusiastic Knight",
+      "maxHp": 10,
+      "preferredSuit": "brawn",
+      "art": "art_hero_bumbles.png",
+      "frame": "frame_hero.png",
+      "perk": {
+        "id": "big-swing",
+        "name": "Big Swing",
+        "rankBonus": 2,
+        "text": "Once per clash, add +2 Rank to any Red (Brawn) card you play.",
+        "printHtml": "<b>Big Swing:</b> Once per clash, add <b>+2 Rank</b> to any <b>Brawn (Red)</b> card."
+      },
+      "starterGear": [
+        "G-01",
+        "G-02",
+        "G-03"
+      ],
+      "starterSummary": "Slightly Bent Shortsword, Pot-Lid Buckler, Cozy Quilted Tunic.",
+      "flavor": "Nobody told him the armor helmet visor is stuck upside down."
+    },
+    {
+      "id": "H-02",
+      "name": "Barnaby Brickwall",
+      "title": "the Polite Sentinel",
+      "printSubtitle": "Polite Sentinel",
+      "maxHp": 10,
+      "preferredSuit": "grit",
+      "art": "art_hero_barnaby.png",
+      "frame": "frame_hero.png",
+      "perk": {
+        "id": "excuse-me-no",
+        "name": "Excuse Me, No",
+        "heal": 1,
+        "text": "Once per clash, scoring an exact-Rank Parry immediately heals 1 HP.",
+        "printHtml": "<b>Excuse Me, No:</b> Once per clash, scoring an exact-Rank <b>Parry</b> heals <b>+1 HP</b>."
+      },
+      "starterGear": [
+        "G-04",
+        "G-05",
+        "G-06"
+      ],
+      "starterSummary": "Heavy Rolling Pin, Trash-Bin Lid, Cushion Vest.",
+      "flavor": "Apologizes politely every time a goblin bounces off his shield."
+    },
+    {
+      "id": "H-03",
+      "name": "Pip Squeak",
+      "title": "the Snack-Powered Rogue",
+      "printSubtitle": "Snack-Powered Rogue",
+      "maxHp": 10,
+      "preferredSuit": "zip",
+      "art": "art_hero_pip.png",
+      "frame": "frame_hero.png",
+      "perk": {
+        "id": "shortcut-tiptoe",
+        "name": "Shortcut Tiptoe",
+        "text": "Moving through already face-up cleared rooms costs half an Action (move 2 revealed empty rooms for 1 Action).",
+        "printHtml": "<b>Shortcut Tiptoe:</b> Move through <b>2 already face-up empty rooms</b> for <b>1 Action</b>."
+      },
+      "starterGear": [
+        "G-07",
+        "G-08",
+        "G-09"
+      ],
+      "starterSummary": "Butter-Knife Shiv, Picnic Scarf, Patchwork Hoodie.",
+      "flavor": "Never explores a basement without pocket crackers."
+    },
+    {
+      "id": "H-04",
+      "name": "Fizzlewig",
+      "title": "the Sparkly Apprentice",
+      "printSubtitle": "Sparkly Apprentice",
+      "maxHp": 10,
+      "preferredSuit": "spark",
+      "art": "art_hero_fizzlewig.png",
+      "frame": "frame_hero.png",
+      "perk": {
+        "id": "improvised-zap",
+        "name": "Improvised Zap",
+        "defensiveRank": 2,
+        "text": "Once per clash, play any Purple (Spark) card as matching any Suit defensively (counts as Rank 2).",
+        "printHtml": "<b>Improvised Zap:</b> Once per clash, play a <b>Spark (Purple)</b> card as any Suit defensively (Rank 2)."
+      },
+      "starterGear": [
+        "G-10",
+        "G-11",
+        "G-12"
+      ],
+      "starterSummary": "Twig Wand, Kaleidoscope, Star-Pajama Robes.",
+      "flavor": "Still hasn't finished wizard school, mostly casts glitter."
+    }
+  ],
+  "heroDownedBack": {
+    "badge": "0 HP • DIZZY",
+    "accent": "#6A6570",
+    "frame": "frame_hero.png",
+    "art": "art_hero_downed_stars.png",
+    "icon": "icon_daze.png",
+    "glyph": "M12 2L14 9L21 9L15 13L17 20L12 16L7 20L9 13L3 9L10 9Z",
+    "printRulesHtml": "<b>KNOCKED OUT!</b> Immediately <b>discard your entire hand</b> and flip this card here.<br><b>Revive:</b> Ally uses Smelling Salts (4 HP) OR carries you to Cocoa Shrine (5 HP) — draw <b>4 fresh Action cards</b>!",
+    "flavor": "Just taking a quick dramatic nap on the floor..."
+  },
+  "hpSliders": [
+    {
+      "kind": "hp-hero",
+      "idPrefix": "HP-H",
+      "copies": 6,
+      "title": "HERO HP SLIDER",
+      "frame": "frame_hp_strip.png",
+      "icon": "icon_heart.png",
+      "accent": "#D9483B",
+      "steps": [
+        "10 (MAX)",
+        "9",
+        "8",
+        "7",
+        "6",
+        "5",
+        "4",
+        "3",
+        "2",
+        "1",
+        "DOWN (0)"
+      ]
+    },
+    {
+      "kind": "hp-monster",
+      "idPrefix": "HP-M",
+      "copies": 6,
+      "title": "MONSTER HP SLIDER",
+      "frame": "frame_hp_strip.png",
+      "icon": "icon_heart.png",
+      "accent": "#2F6FB8",
+      "steps": [
+        "8",
+        "7",
+        "6",
+        "5",
+        "4",
+        "3",
+        "2",
+        "1",
+        "POOF! (0)"
+      ]
+    },
+    {
+      "kind": "hp-boss",
+      "idPrefix": "HP-B",
+      "copies": 2,
+      "title": "BOSS HP SLIDER (22..1)",
+      "frame": "frame_hp_strip.png",
+      "icon": "icon_tier_star.png",
+      "accent": "#7E4BB5",
+      "steps": [
+        "22",
+        "21",
+        "20",
+        "19",
+        "18",
+        "17",
+        "16",
+        "15",
+        "14",
+        "13",
+        "12",
+        "11",
+        "10",
+        "9",
+        "8",
+        "7",
+        "6",
+        "5",
+        "4",
+        "3",
+        "2",
+        "1 / POOF!"
+      ]
+    }
+  ],
+  "gear": [
+    {
+      "id": "G-01",
+      "name": "Slightly Bent Shortsword",
+      "slot": "weapon",
+      "tuckSide": "LEFT",
+      "tier": 0,
+      "printTier": "0",
+      "art": "art_gear_starter_sword.png",
+      "tuckShort": "Strike: 2 Dmg",
+      "strike": 2,
+      "rule": "Clean Strike: Deal 2 Dmg.",
+      "printRulesHtml": "Clean Strike: Deal <b>2 Dmg</b>.",
+      "flavor": "Curves nicely around corners!"
+    },
+    {
+      "id": "G-02",
+      "name": "Pot-Lid Buckler",
+      "slot": "offhand",
+      "tuckSide": "RIGHT",
+      "tier": 0,
+      "printTier": "0",
+      "art": "art_gear_starter_shield.png",
+      "tuckShort": "[TAP] Block 1",
+      "tapBlock": 1,
+      "rule": "[TAP] (90°): Block 1 Dmg once per clash.",
+      "printRulesHtml": "<b>[TAP] (90&deg;):</b> Block <b>1 Dmg</b> once per clash.",
+      "flavor": "Smells faintly of Tuesday's stew."
+    },
+    {
+      "id": "G-03",
+      "name": "Cozy Quilted Tunic",
+      "slot": "armor",
+      "tuckSide": "BOTTOM",
+      "tier": 0,
+      "printTier": "0",
+      "art": "art_gear_starter_armor.png",
+      "tuckShort": "Ignore Rank 1",
+      "ignoreRanks": [
+        1
+      ],
+      "rule": "Passive: Ignore damage from Monster Rank 1 cards.",
+      "printRulesHtml": "<b>Passive:</b> Ignore damage from Monster <b>Rank 1</b> cards.",
+      "flavor": "Basically a wearable blanket."
+    },
+    {
+      "id": "G-04",
+      "name": "Heavy Rolling Pin",
+      "slot": "weapon",
+      "tuckSide": "LEFT",
+      "tier": 0,
+      "printTier": "0",
+      "art": "art_gear_rolling_pin.png",
+      "tuckShort": "Strike: 2 Dmg",
+      "strike": 2,
+      "rule": "Clean Strike: Deal 2 Dmg.",
+      "printRulesHtml": "Clean Strike: Deal <b>2 Dmg</b>.",
+      "flavor": "Good for pastry and pesky skeletons."
+    },
+    {
+      "id": "G-05",
+      "name": "Trash-Bin Lid Shield",
+      "slot": "offhand",
+      "tuckSide": "RIGHT",
+      "tier": 0,
+      "printTier": "0",
+      "art": "art_gear_starter_shield.png",
+      "tuckShort": "[TAP] Block 1",
+      "tapBlock": 1,
+      "rule": "[TAP] (90°): Block 1 Dmg once per clash.",
+      "printRulesHtml": "<b>[TAP] (90&deg;):</b> Block <b>1 Dmg</b> once per clash.",
+      "flavor": "Makes a satisfying BONG sound."
+    },
+    {
+      "id": "G-06",
+      "name": "Padded Sofa-Cushion Vest",
+      "slot": "armor",
+      "tuckSide": "BOTTOM",
+      "tier": 0,
+      "printTier": "0",
+      "art": "art_gear_starter_armor.png",
+      "tuckShort": "Ignore Rank 1",
+      "ignoreRanks": [
+        1
+      ],
+      "rule": "Passive: Ignore damage from Monster Rank 1 cards.",
+      "printRulesHtml": "<b>Passive:</b> Ignore damage from Monster <b>Rank 1</b> cards.",
+      "flavor": "Extra lumbar support in tight spots."
+    },
+    {
+      "id": "G-07",
+      "name": "Butter-Knife Shiv",
+      "slot": "weapon",
+      "tuckSide": "LEFT",
+      "tier": 0,
+      "printTier": "0",
+      "art": "art_gear_butter_knife.png",
+      "tuckShort": "1 Dmg (+1 Zip)",
+      "strike": 1,
+      "strikeBonusSuit": "zip",
+      "rule": "Clean Strike: Deal 1 Dmg (+1 Dmg if Zip/Yellow card).",
+      "printRulesHtml": "Clean Strike: Deal <b>1 Dmg</b> (<b>+1 Dmg</b> if <b>Zip/Yellow</b>).",
+      "flavor": "Spreads jam AND justice."
+    },
+    {
+      "id": "G-08",
+      "name": "Checkered Picnic Scarf",
+      "slot": "offhand",
+      "tuckSide": "RIGHT",
+      "tier": 0,
+      "printTier": "0",
+      "art": "art_gear_scarf.png",
+      "tuckShort": "+1 Stunt/Floor",
+      "rule": "Once/Floor: Gain +1 to any Stunt roll.",
+      "printRulesHtml": "<b>Once/Floor:</b> Gain <b>+1</b> to any Stunt roll.",
+      "flavor": "Never leave camp without napkins."
+    },
+    {
+      "id": "G-09",
+      "name": "Patchwork Hoodie",
+      "slot": "armor",
+      "tuckSide": "BOTTOM",
+      "tier": 0,
+      "printTier": "0",
+      "art": "art_gear_starter_armor.png",
+      "tuckShort": "Ignore Rank 1",
+      "ignoreRanks": [
+        1
+      ],
+      "rule": "Passive: Ignore damage from Monster Rank 1 cards.",
+      "printRulesHtml": "<b>Passive:</b> Ignore damage from Monster <b>Rank 1</b> cards.",
+      "flavor": "Has six hidden snack pockets."
+    },
+    {
+      "id": "G-10",
+      "name": "Sparkly Twig Wand",
+      "slot": "weapon",
+      "tuckSide": "LEFT",
+      "tier": 0,
+      "printTier": "0",
+      "art": "art_gear_twig_wand.png",
+      "tuckShort": "1 Dmg (+1 Spark)",
+      "strike": 1,
+      "strikeBonusSuit": "spark",
+      "rule": "Clean Strike: Deal 1 Dmg (+1 Dmg if Spark/Purple card).",
+      "printRulesHtml": "Clean Strike: Deal <b>1 Dmg</b> (<b>+1 Dmg</b> if <b>Spark/Purple</b>).",
+      "flavor": "Found behind the bakery!"
+    },
+    {
+      "id": "G-11",
+      "name": "Lucky Pocket Kaleidoscope",
+      "slot": "offhand",
+      "tuckSide": "RIGHT",
+      "tier": 0,
+      "printTier": "0",
+      "art": "art_gear_kaleidoscope.png",
+      "tuckShort": "Reroll 1 Stunt",
+      "rule": "Once/Floor: Reroll 1 failed Stunt 1d6.",
+      "printRulesHtml": "<b>Once/Floor:</b> Reroll 1 failed Stunt 1d6.",
+      "flavor": "Ooh, pretty triangles!"
+    },
+    {
+      "id": "G-12",
+      "name": "Star-Pajama Robes",
+      "slot": "armor",
+      "tuckSide": "BOTTOM",
+      "tier": 0,
+      "printTier": "0",
+      "art": "art_gear_pajama_robes.png",
+      "tuckShort": "Ignore Rank 1",
+      "ignoreRanks": [
+        1
+      ],
+      "rule": "Passive: Ignore damage from Monster Rank 1 cards.",
+      "printRulesHtml": "<b>Passive:</b> Ignore damage from Monster <b>Rank 1</b> cards.",
+      "flavor": "Maximum comfort, questionable dignity."
+    },
+    {
+      "id": "G-13",
+      "name": "Twin Butter-Knives of Speed",
+      "slot": "weapon",
+      "tuckSide": "LEFT",
+      "tier": 1,
+      "printTier": "1",
+      "art": "art_gear_twin_knives.png",
+      "tuckShort": "1 Dmg; Play 2=",
+      "strike": 1,
+      "rule": "Clean Strike: Deal 1 Dmg. You may play up to 2 matching-Rank cards in one turn (each hits!).",
+      "printRulesHtml": "Clean Strike: <b>1 Dmg</b>. May play up to <b>2 matching-Rank</b> cards at once!",
+      "flavor": "Double-sided breakfast fury!"
+    },
+    {
+      "id": "G-14",
+      "name": "Barn-Door Tower Shield",
+      "slot": "offhand",
+      "tuckSide": "RIGHT",
+      "tier": 1,
+      "printTier": "1",
+      "art": "art_gear_barn_shield.png",
+      "tuckShort": "Parry +1; [TAP] 2",
+      "tapBlock": 2,
+      "parryReflect": 1,
+      "rule": "Parries reflect 1 Dmg back; [TAP]: Block 2 Dmg.",
+      "printRulesHtml": "<b>Parries</b> reflect <b>1 Dmg</b>; <b>[TAP] (90&deg;):</b> Block <b>2 Dmg</b>.",
+      "flavor": "Yes, it still has the brass doorknob."
+    },
+    {
+      "id": "G-15",
+      "name": "Clinky Chainmail",
+      "slot": "armor",
+      "tuckSide": "BOTTOM",
+      "tier": 1,
+      "printTier": "1",
+      "art": "art_gear_chainmail.png",
+      "tuckShort": "Ignore Rank 1-2",
+      "ignoreRanks": [
+        1,
+        2
+      ],
+      "rule": "Passive: Ignore damage from Monster Rank 1–2 cards.",
+      "printRulesHtml": "<b>Passive:</b> Ignore damage from Monster <b>Rank 1–2</b> cards.",
+      "flavor": "Can't hear you sneaking over the jingle!"
+    },
+    {
+      "id": "G-16",
+      "name": "Comically Large Mallet",
+      "slot": "weapon",
+      "tuckSide": "LEFT",
+      "tier": 1,
+      "printTier": "1",
+      "art": "art_gear_large_mallet.png",
+      "tuckShort": "2 Dmg; Grit Pierce",
+      "strike": 2,
+      "gritIgnoresArmor": true,
+      "rule": "Clean Strike: Deal 2 Dmg. All Grit (Blue) strikes ignore Monster Armor!",
+      "printRulesHtml": "Clean Strike: <b>2 Dmg</b>. <b>Grit (Blue)</b> strikes ignore Monster Armor!",
+      "flavor": "BONK!"
+    },
+    {
+      "id": "G-17",
+      "name": "Cookie-Tin Aegis",
+      "slot": "offhand",
+      "tuckSide": "RIGHT",
+      "tier": 1,
+      "printTier": "1",
+      "art": "art_gear_cookie_aegis.png",
+      "tuckShort": "[TAP] Any=Parry",
+      "rule": "[TAP]: Treat any 1 played card from your hand as an exact Parry!",
+      "printRulesHtml": "<b>[TAP] (90&deg;):</b> Treat any 1 played card as an exact <b>Parry</b>!",
+      "flavor": "Wait—there's sewing needles inside!"
+    },
+    {
+      "id": "G-18",
+      "name": "Bouncy Rubber Boots",
+      "slot": "armor",
+      "tuckSide": "BOTTOM",
+      "tier": 1,
+      "printTier": "1",
+      "art": "art_gear_bouncy_boots.png",
+      "tuckShort": "-1 Trap; +1 Zip",
+      "rule": "Passive: Ignore 1 trap damage per Trap Room; +1 on all Zip Stunts.",
+      "printRulesHtml": "Ignore <b>1</b> trap Dmg per Trap Room; <b>+1</b> on all <b>Zip</b> Stunts.",
+      "flavor": "Boing! Straight over the puddle."
+    },
+    {
+      "id": "G-19",
+      "name": "Boom-Hammer of Boops",
+      "slot": "weapon",
+      "tuckSide": "LEFT",
+      "tier": 2,
+      "printTier": "2-3",
+      "art": "art_gear_boom_hammer.png",
+      "tuckShort": "2 Dmg; B4=Daze!",
+      "strike": 2,
+      "gritIgnoresArmor": true,
+      "rule": "Clean Strike: 2 Dmg; Grit ignores Armor. Trigger: Blue 4 auto-Daze!s the Monster.",
+      "printRulesHtml": "<b>2 Dmg</b>; Grit ignores Armor. <b>Trigger: Blue 4</b> auto-<b>Daze!</b>s foe!",
+      "flavor": "Ring-a-ding-dong right between the eyes."
+    },
+    {
+      "id": "G-20",
+      "name": "Sneaky Blanket of Vanishing",
+      "slot": "armor",
+      "tuckSide": "BOTTOM",
+      "tier": 2,
+      "printTier": "2-3",
+      "art": "art_gear_sneaky_blanket.png",
+      "tuckShort": "Ign 1-2; Y1-2 Flee",
+      "ignoreRanks": [
+        1,
+        2
+      ],
+      "rule": "Ignore Rank 1–2 hits. Trigger: Yellow 1 or 2 lets you tiptoe out of combat.",
+      "printRulesHtml": "Ignore <b>Rank 1–2</b>. <b>Trigger: Yellow 1 or 2</b> lets you tiptoe to adjacent room!",
+      "flavor": "If you can't see them, they can't see you."
+    },
+    {
+      "id": "G-21",
+      "name": "Overly Dramatic Greatsword",
+      "slot": "weapon",
+      "tuckSide": "LEFT",
+      "tier": 2,
+      "printTier": "2-3",
+      "art": "art_gear_dramatic_sword.png",
+      "tuckShort": "3 Dmg; Daze! +2",
+      "strike": 3,
+      "rule": "Clean Strike: 3 Dmg. Red 5 or 6 adds 1 Cramp!. Trigger: any Daze! deals +2 bonk Dmg.",
+      "printRulesHtml": "<b>3 Dmg</b>; Red 5–6 adds 1 <b>Cramp!</b>. <b>Trigger:</b> Any <b>Daze!</b> deals <b>+2 Dmg</b>!",
+      "flavor": "Requires a wind machine to unsheathe properly."
+    },
+    {
+      "id": "G-22",
+      "name": "Fizz-Pop Spellblade",
+      "slot": "weapon",
+      "tuckSide": "LEFT",
+      "tier": 2,
+      "printTier": "2-3",
+      "art": "art_gear_fizz_blade.png",
+      "tuckShort": "2 Dmg; P-Bounce +2HP",
+      "strike": 2,
+      "rule": "Clean Strike: 2 Dmg. Trigger: Purple Bounce Back! heals 2 HP plus reflect.",
+      "printRulesHtml": "<b>2 Dmg</b>. <b>Trigger: Purple Bounce Back!</b> heals <b>+2 HP</b>!",
+      "flavor": "Tastes like grape soda when swung!"
+    },
+    {
+      "id": "G-23",
+      "name": "Snack-Pocket Plate",
+      "slot": "armor",
+      "tuckSide": "BOTTOM",
+      "tier": 2,
+      "printTier": "2-3",
+      "art": "art_gear_snack_plate.png",
+      "tuckShort": "Ign 1-2; R3 +1HP",
+      "ignoreRanks": [
+        1,
+        2
+      ],
+      "rule": "Ignore Rank 1–2 hits. Trigger: Red 3 heals 1 HP mid-fight.",
+      "printRulesHtml": "Ignore <b>Rank 1–2</b>. <b>Trigger:</b> Hitting with <b>Red 3</b> heals <b>+1 HP</b>!",
+      "flavor": "Emergency pretzel compartment right in the chestplate."
+    },
+    {
+      "id": "G-24",
+      "name": "Tick-Tock Pocket Lantern",
+      "slot": "belt",
+      "tuckSide": "BELT",
+      "tier": 2,
+      "printTier": "2-3",
+      "art": "art_gear_lantern.png",
+      "tuckShort": "Relic: +2 = Draw 1",
+      "rule": "Passive Relic: Whenever you play Tuckered Out! (+2), immediately draw 1 Action Card.",
+      "printRulesHtml": "<b>Passive Relic:</b> Playing <b>Tuckered Out! (+2)</b> lets you draw <b>1 Action Card</b>!",
+      "flavor": "Wait—we still have time for second breakfast!"
+    },
+    {
+      "id": "G-25",
+      "name": "Wakey-Wakey Smelling Salts",
+      "slot": "belt",
+      "tuckSide": "BELT",
+      "tier": "belt",
+      "printTier": "BELT",
+      "type": "revive",
+      "art": "art_item_revive_salts.png",
+      "tuckShort": "Revive 4HP / Solo +3HP",
+      "reviveHp": 4,
+      "reviveCards": 4,
+      "soloHeal": 3,
+      "rule": "1 Exploration Action: Wake 1 DOWNED Hero in your room to 4 HP; they draw 4 fresh Action cards. Solo Mode (Free): Take a quick whiff to restore +3 HP!",
+      "printRulesHtml": "<b>1 Action:</b> Revive <b>DOWNED</b> ally in room (<b>4 HP</b> + 4 cards).<br><b>Solo Mode (Free):</b> Take a quick whiff to heal <b>+3 HP</b>!",
+      "flavor": "Smells like toasted marshmallows and mint!"
+    },
+    {
+      "id": "G-26",
+      "name": "Wakey-Wakey Smelling Salts",
+      "slot": "belt",
+      "tuckSide": "BELT",
+      "tier": "belt",
+      "printTier": "BELT",
+      "type": "revive",
+      "art": "art_item_revive_salts.png",
+      "tuckShort": "Revive 4HP / Solo +3HP",
+      "reviveHp": 4,
+      "reviveCards": 4,
+      "soloHeal": 3,
+      "rule": "1 Exploration Action: Wake 1 DOWNED Hero in your room to 4 HP; they draw 4 fresh Action cards. Solo Mode (Free): Take a quick whiff to restore +3 HP!",
+      "printRulesHtml": "<b>1 Action:</b> Revive <b>DOWNED</b> ally in room (<b>4 HP</b> + 4 cards).<br><b>Solo Mode (Free):</b> Take a quick whiff to heal <b>+3 HP</b>!",
+      "flavor": "Guaranteed to perk up any snoozing knight!"
+    },
+    {
+      "id": "G-27",
+      "name": "Strawberry Fizz Potion",
+      "slot": "belt",
+      "tuckSide": "BELT",
+      "tier": "belt",
+      "printTier": "BELT",
+      "type": "heal",
+      "art": "art_item_fizz_potion.png",
+      "tuckShort": "Heal +4 HP",
+      "heal": 4,
+      "rule": "Anytime (Free): Restore +4 HP (up to Max 10).",
+      "printRulesHtml": "<b>Anytime (Free):</b> Restore <b>+4 HP</b> (up to Max 10).",
+      "flavor": "Shake gently before opening!"
+    },
+    {
+      "id": "G-28",
+      "name": "Strawberry Fizz Potion",
+      "slot": "belt",
+      "tuckSide": "BELT",
+      "tier": "belt",
+      "printTier": "BELT",
+      "type": "heal",
+      "art": "art_item_fizz_potion.png",
+      "tuckShort": "Heal +4 HP",
+      "heal": 4,
+      "rule": "Anytime (Free): Restore +4 HP (up to Max 10).",
+      "printRulesHtml": "<b>Anytime (Free):</b> Restore <b>+4 HP</b> (up to Max 10).",
+      "flavor": "Now with extra silly straws!"
+    },
+    {
+      "id": "G-29",
+      "name": "Confetti Smoke Bomb",
+      "slot": "belt",
+      "tuckSide": "BELT",
+      "tier": "belt",
+      "printTier": "BELT",
+      "type": "escape",
+      "art": "art_item_confetti_bomb.png",
+      "tuckShort": "Auto-Daze or Flee",
+      "rule": "Combat Turn (Free): Automatically Daze! the Monster OR safely slip back into an adjacent cleared room.",
+      "printRulesHtml": "<b>Combat Turn (Free):</b> Auto-<b>Daze!</b> Monster OR slip back to cleared room!",
+      "flavor": "POOF! Happy birthday—I'm gone!"
+    },
+    {
+      "id": "G-30",
+      "name": "Second Wind Snack Charm",
+      "slot": "belt",
+      "tuckSide": "BELT",
+      "tier": "belt",
+      "printTier": "BELT",
+      "type": "solo-charm",
+      "art": "art_item_muffin_charm.png",
+      "tuckShort": "1v1 Auto-Revive 4HP",
+      "reviveHp": 4,
+      "rule": "1v1 Hard Mode / Once per Floor: When hitting 0 HP, auto-revive at 4 HP and keep your entire hand.",
+      "printRulesHtml": "<b>1v1 Solo / Once per Floor:</b> At 0 HP, bounce to <b>4 HP</b> & <b>keep hand</b>!",
+      "flavor": "Emergency cinnamon muffin saves the day!"
+    }
+  ],
+  "rooms": [
+    {
+      "id": "R-01",
+      "name": "Doormat Entrance",
+      "kind": "entrance",
+      "badge": "START",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "startFaceUp": true,
+      "art": "art_room_entrance.png",
+      "rule": "Start Face-Up. All Heroes start here. Safe zone.",
+      "printRulesHtml": "<b>Face-Up Start.</b> All Heroes begin here. Safe spot.",
+      "flavor": "A cheerful 'WELCOME ADVENTURERS' mat hides a squeaky floorboard."
+    },
+    {
+      "id": "R-02",
+      "name": "Spiral Slide / Stairway Down",
+      "printTitle": "Spiral Slide / Stairs Down",
+      "kind": "stairs",
+      "badge": "EXIT",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_stairs.png",
+      "rule": "Locked until Floor Boss defeated (or 5+ Zip/Brawn Key Stunt). Group Descent (Free Action): Once a Hero reaches unlocked Stairs, the party may descend together! Narrative Time-Skip: If the Sanctuary Shrine is revealed, live Heroes carry DOWNED allies there for a free Shrine revive (5 HP + 4 cards) and every Hero claims any unused +3 HP Shrine rest before descending!",
+      "printRulesHtml": "<b>Locked</b> until Boss beaten (or <b>5+</b> Key Stunt).<br><b>Group Descent (Free):</b> Regroup! If Shrine is revealed, auto-revive <b>DOWNED</b> allies (5 HP + 4 cards) &amp; grant everyone's unused <b>+3 HP</b> Shrine rest!",
+      "flavor": "Notice sign: 'Please tuck elbows before sliding to Floor 2!'"
+    },
+    {
+      "id": "R-03",
+      "name": "Cozy Cocoa Sanctuary Shrine",
+      "printTitle": "Cozy Cocoa Sanctuary",
+      "kind": "shrine",
+      "badge": "SHRINE",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_shrine.png",
+      "rule": "Personal Rest (1 Action, once/Hero): Heal +3 HP. Ally Rescue (1 Action, unlimited): Wake 1 DOWNED ally here (5 HP + 4 cards — does not consume your personal Rest!).",
+      "printRulesHtml": "<b>Personal Rest (1 Action, once/Hero):</b> Heal <b>+3 HP</b>.<br><b>Ally Rescue (1 Action):</b> Wake <b>DOWNED</b> buddy (5 HP + 4 cards — keeps your Rest!).",
+      "flavor": "Free marshmallows while supplies last."
+    },
+    {
+      "id": "R-04",
+      "name": "Monster Lair",
+      "kind": "monster",
+      "badge": "LAIR",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_lair.png",
+      "rule": "Flip: movement ends; Dealer draws Floor 1 Monster and begins 1v1 Clash.",
+      "printRulesHtml": "<b>Flip Trigger:</b> Stop movement! Draw 1 Monster + HP Strip & fight a <b>1v1 Clash</b>.",
+      "flavor": "Someone definitely left muddy footprints everywhere."
+    },
+    {
+      "id": "R-05",
+      "name": "Monster Lair",
+      "kind": "monster",
+      "badge": "LAIR",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_lair.png",
+      "rule": "Flip: movement ends; Dealer draws Floor 1 Monster and begins 1v1 Clash.",
+      "printRulesHtml": "<b>Flip Trigger:</b> Stop movement! Draw 1 Monster + HP Strip & fight a <b>1v1 Clash</b>.",
+      "flavor": "Someone definitely left muddy footprints everywhere."
+    },
+    {
+      "id": "R-06",
+      "name": "Monster Lair",
+      "kind": "monster",
+      "badge": "LAIR",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_lair.png",
+      "rule": "Flip: movement ends; Dealer draws Floor 1 Monster and begins 1v1 Clash.",
+      "printRulesHtml": "<b>Flip Trigger:</b> Stop movement! Draw 1 Monster + HP Strip & fight a <b>1v1 Clash</b>.",
+      "flavor": "Someone definitely left muddy footprints everywhere."
+    },
+    {
+      "id": "R-07",
+      "name": "Monster Lair",
+      "kind": "monster",
+      "badge": "LAIR",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_lair.png",
+      "rule": "Flip: movement ends; Dealer draws Floor 1 Monster and begins 1v1 Clash.",
+      "printRulesHtml": "<b>Flip Trigger:</b> Stop movement! Draw 1 Monster + HP Strip & fight a <b>1v1 Clash</b>.",
+      "flavor": "Someone definitely left muddy footprints everywhere."
+    },
+    {
+      "id": "R-08",
+      "name": "Monster Lair",
+      "kind": "monster",
+      "badge": "LAIR",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_lair.png",
+      "rule": "Flip: movement ends; Dealer draws Floor 1 Monster and begins 1v1 Clash.",
+      "printRulesHtml": "<b>Flip Trigger:</b> Stop movement! Draw 1 Monster + HP Strip & fight a <b>1v1 Clash</b>.",
+      "flavor": "Someone definitely left muddy footprints everywhere."
+    },
+    {
+      "id": "R-09",
+      "name": "Monster Lair",
+      "kind": "monster",
+      "badge": "LAIR",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_lair.png",
+      "rule": "Flip: movement ends; Dealer draws Floor 1 Monster and begins 1v1 Clash.",
+      "printRulesHtml": "<b>Flip Trigger:</b> Stop movement! Draw 1 Monster + HP Strip & fight a <b>1v1 Clash</b>.",
+      "flavor": "Someone definitely left muddy footprints everywhere."
+    },
+    {
+      "id": "R-10",
+      "name": "Grand Boss Stage",
+      "kind": "boss",
+      "badge": "BOSS",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_boss.png",
+      "rule": "Flip: movement ends; the Floor Boss waits until Heroes in the room call the fight (10 HP + 4/extra Hero fighting — no need to wait for DOWNED or Sticky Door Jam-blocked allies!). Nearby Heroes may join.",
+      "printRulesHtml": "<b>Flip Trigger:</b> Stop movement! Boss (10 + 4/extra Hero HP) waits until Heroes here call the fight (no need to wait on DOWNED/jammed allies)!",
+      "flavor": "Why is there dramatic spotlight lighting down here?"
+    },
+    {
+      "id": "R-11",
+      "name": "Sparkly Treasure Closet (Loot Vault)",
+      "printTitle": "Sparkly Treasure Closet",
+      "kind": "vault",
+      "badge": "VAULT",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_vault.png",
+      "rule": "Spend 1 Action: draw 2 Loot, keep 1, discard 1 (then mark empty).",
+      "printRulesHtml": "<b>Stays Face-Up.</b> Spend <b>1 Action</b>: draw 2 Loot cards, keep 1 (once per vault).",
+      "flavor": "Somebody hid good stuff behind the extra mop buckets!"
+    },
+    {
+      "id": "R-12",
+      "name": "Sparkly Treasure Closet (Loot Vault)",
+      "printTitle": "Sparkly Treasure Closet",
+      "kind": "vault",
+      "badge": "VAULT",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_vault.png",
+      "rule": "Spend 1 Action: draw 2 Loot, keep 1, discard 1 (then mark empty).",
+      "printRulesHtml": "<b>Stays Face-Up.</b> Spend <b>1 Action</b>: draw 2 Loot cards, keep 1 (once per vault).",
+      "flavor": "Somebody hid good stuff behind the extra mop buckets!"
+    },
+    {
+      "id": "R-13",
+      "name": "Sparkly Treasure Closet (Loot Vault)",
+      "printTitle": "Sparkly Treasure Closet",
+      "kind": "vault",
+      "badge": "VAULT",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_vault.png",
+      "rule": "Spend 1 Action: draw 2 Loot, keep 1, discard 1 (then mark empty).",
+      "printRulesHtml": "<b>Stays Face-Up.</b> Spend <b>1 Action</b>: draw 2 Loot cards, keep 1 (once per vault).",
+      "flavor": "Somebody hid good stuff behind the extra mop buckets!"
+    },
+    {
+      "id": "R-14",
+      "name": "Sparkly Treasure Closet (Loot Vault)",
+      "printTitle": "Sparkly Treasure Closet",
+      "kind": "vault",
+      "badge": "VAULT",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_vault.png",
+      "rule": "Spend 1 Action: draw 2 Loot, keep 1, discard 1 (then mark empty).",
+      "printRulesHtml": "<b>Stays Face-Up.</b> Spend <b>1 Action</b>: draw 2 Loot cards, keep 1 (once per vault).",
+      "flavor": "Somebody hid good stuff behind the extra mop buckets!"
+    },
+    {
+      "id": "R-15",
+      "name": "Silly Trap / Surprise Room",
+      "kind": "trap",
+      "badge": "EVENT",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_trap.png",
+      "rule": "Flip: draw 1 Trap / Curious Event; resolve choices or Stunt.",
+      "printRulesHtml": "<b>Flip Trigger:</b> Pause and draw 1 <b>Trap / Curious Event</b> card.",
+      "flavor": "Suspiciously clean floor. Too clean..."
+    },
+    {
+      "id": "R-16",
+      "name": "Silly Trap / Surprise Room",
+      "kind": "trap",
+      "badge": "EVENT",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_trap.png",
+      "rule": "Flip: draw 1 Trap / Curious Event; resolve choices or Stunt.",
+      "printRulesHtml": "<b>Flip Trigger:</b> Pause and draw 1 <b>Trap / Curious Event</b> card.",
+      "flavor": "Suspiciously clean floor. Too clean..."
+    },
+    {
+      "id": "R-17",
+      "name": "Story / Traveling Cart Room",
+      "printTitle": "Story / Traveling Cart",
+      "virtualName": "Merchant Cart Room",
+      "kind": "story",
+      "virtualKind": "merchant",
+      "badge": "STORY",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_story.png",
+      "rule": "Flip: play Part II Callback if stacked, else draw Story or Merchant.",
+      "virtualRule": "Flip: a Traveling Merchant sets up shop here so any Hero can trade gear.",
+      "printRulesHtml": "<b>Flip Trigger:</b> Play any Next-Floor <b>Part II Callback</b> here, else draw Story/Merchant!",
+      "flavor": "Wait—how did a wooden wagon fit down the stairs?!"
+    },
+    {
+      "id": "R-18",
+      "name": "Story / Traveling Cart Room",
+      "printTitle": "Story / Traveling Cart",
+      "virtualName": "Merchant Cart Room",
+      "kind": "story",
+      "virtualKind": "merchant",
+      "badge": "STORY",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_story.png",
+      "rule": "Flip: play Part II Callback if stacked, else draw Story or Merchant.",
+      "virtualRule": "Flip: a Traveling Merchant sets up shop here so any Hero can trade gear.",
+      "printRulesHtml": "<b>Flip Trigger:</b> Play any Next-Floor <b>Part II Callback</b> here, else draw Story/Merchant!",
+      "flavor": "Wait—how did a wooden wagon fit down the stairs?!"
+    },
+    {
+      "id": "R-19",
+      "name": "Echoing Hallway",
+      "kind": "hallway",
+      "badge": "HALL",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_hall.png",
+      "rule": "Safe junction. Optional 1 Action: 4+ Spark/Zip Stunt for +1 Action card (once).",
+      "printRulesHtml": "<b>Safe Junction.</b> Optional (1 Action): <b>4+</b> Spark/Zip Stunt to find <b>+1 Action</b> card.",
+      "flavor": "ECHO! (echo... echo...)"
+    },
+    {
+      "id": "R-20",
+      "name": "Echoing Hallway",
+      "kind": "hallway",
+      "badge": "HALL",
+      "copies": 1,
+      "doorways": [
+        "N",
+        "E",
+        "S",
+        "W"
+      ],
+      "art": "art_room_hall.png",
+      "rule": "Safe junction. Optional 1 Action: 4+ Spark/Zip Stunt for +1 Action card (once).",
+      "printRulesHtml": "<b>Safe Junction.</b> Optional (1 Action): <b>4+</b> Spark/Zip Stunt to find <b>+1 Action</b> card.",
+      "flavor": "ECHO! (echo... echo...)"
+    }
+  ],
+  "defaultFloorRecipeIds": [
+    "R-01",
+    "R-02",
+    "R-04",
+    "R-05",
+    "R-06",
+    "R-07",
+    "R-10",
+    "R-11",
+    "R-12",
+    "R-13",
+    "R-15",
+    "R-16",
+    "R-17",
+    "R-03"
+  ],
+  "monsters": [
+    {
+      "id": "MON-01",
+      "name": "Sneaky Goblin Intern",
+      "hp": 3,
+      "cunning": 4,
+      "baseDmg": 1,
+      "traitId": "unpaid-overtime",
+      "trait": "Unpaid Overtime: Zip cards played by this Monster count as +1 Rank.",
+      "loot": "Draw 1 Action card",
+      "printTraitHtml": "<b>Unpaid Overtime:</b> Monster's <b>Zip (Yellow)</b> cards count as <b>+1 Rank</b>.<br><b>Drop:</b> 1 Action card.",
+      "art": "art_mon_goblin_intern.png",
+      "flavor": "Just trying to finish his basement shift before 5 PM!"
+    },
+    {
+      "id": "MON-02",
+      "name": "Clattery Skeleton Bouncer",
+      "hp": 4,
+      "cunning": 3,
+      "baseDmg": 2,
+      "traitId": "rattle-armor",
+      "trait": "Rattle Armor: Ignores the first 1 damage taken in this clash.",
+      "loot": "Draw 1 Consumable",
+      "printTraitHtml": "<b>Rattle Armor:</b> Ignores the <b>first 1 Dmg</b> taken in this clash.<br><b>Drop:</b> 1 Belt Consumable.",
+      "art": "art_mon_skeleton_bouncer.png",
+      "flavor": "Sorry pal, your boots aren't on the VIP list."
+    },
+    {
+      "id": "MON-03",
+      "name": "Grumpy Mushroom Lump",
+      "hp": 5,
+      "cunning": 3,
+      "baseDmg": 2,
+      "traitId": "grumpy-spores",
+      "trait": "Grumpy Spores: Hitting with Brawn puffs 1 Cramp! into your hand.",
+      "loot": "Draw 1 Tier 1 Loot",
+      "printTraitHtml": "<b>Grumpy Spores:</b> Hits with <b>Brawn (Red)</b> add <b>1 Cramp!</b> to your hand.<br><b>Drop:</b> 1 Tier 1 Loot.",
+      "art": "art_mon_mushroom_lump.png",
+      "flavor": "WHO WOKE ME UP FROM MY NAP?!"
+    },
+    {
+      "id": "MON-04",
+      "name": "Wobbly Gelatin Cube",
+      "hp": 3,
+      "cunning": 4,
+      "baseDmg": 2,
+      "traitId": "lime-jiggle",
+      "trait": "Lime Jiggle: +1 Dmg if the Hero flipped a Desperation card this clash.",
+      "loot": "Draw 1 Consumable",
+      "printTraitHtml": "<b>Lime Jiggle:</b> Deals <b>+1 Dmg</b> if Hero flipped a Desperation card.<br><b>Drop:</b> 1 Belt Consumable.",
+      "art": "art_mon_gelatin_cube.png",
+      "flavor": "Smells suspiciously like key-lime pudding!"
+    },
+    {
+      "id": "MON-05",
+      "name": "Napping Mimic Ottoman",
+      "hp": 4,
+      "cunning": 4,
+      "baseDmg": 1,
+      "traitId": "cozy-nap",
+      "trait": "Cozy Nap: Any Spark card played heals this Monster 1 HP instead of hurting it.",
+      "loot": "Draw 1 Tier 1 Loot",
+      "printTraitHtml": "<b>Cozy Nap:</b> Any <b>Spark (Purple)</b> card heals this Monster <b>1 HP</b>.<br><b>Drop:</b> 1 Tier 1 Loot.",
+      "art": "art_mon_mimic_ottoman.png",
+      "flavor": "Thought it was a comfy footstool—until it yawned with teeth!"
+    },
+    {
+      "id": "MON-06",
+      "name": "Shiny-Obsessed Rust Beetle",
+      "hp": 3,
+      "cunning": 3,
+      "baseDmg": 1,
+      "traitId": "button-nibbler",
+      "trait": "Button Nibbler: On hit, tap the Hero's Armor (or +1 Dmg if none/already tapped).",
+      "loot": "Draw 1 Action card",
+      "printTraitHtml": "<b>Button Nibbler:</b> On hit, <b>tap (90&deg;)</b> Hero Armor (or +1 Dmg).<br><b>Drop:</b> 1 Action card.",
+      "art": "art_mon_rust_beetle.png",
+      "flavor": "Ooh, shiny belt buckles! Nom nom!"
+    },
+    {
+      "id": "MON-07",
+      "name": "Hangry Tunnel Troll",
+      "hp": 6,
+      "cunning": 3,
+      "baseDmg": 2,
+      "traitId": "big-appetite",
+      "trait": "Big Appetite: Rank 5–6 attacks deal +1 Dmg. (Can be bribed with Consumable via 4+ Spark Stunt!)",
+      "loot": "Draw 1 Tier 1 Loot",
+      "printTraitHtml": "<b>Big Appetite:</b> Monster Rank 5–6 hits deal <b>+1 Dmg</b>. (Bribe w/ snack: 4+ Spark Stunt!)<br><b>Drop:</b> 1 Tier 1 Loot.",
+      "art": "art_mon_tunnel_troll.png",
+      "flavor": "Not evil—just skipped lunch!"
+    },
+    {
+      "id": "MON-08",
+      "name": "Three Kobolds in a Trenchcoat",
+      "hp": 3,
+      "cunning": 4,
+      "baseDmg": 1,
+      "traitId": "three-way-team",
+      "trait": "Three-Way Team: When anyone plays Daze!, this Monster gets two free 1 Dmg swings next turn instead of missing.",
+      "loot": "Draw 1 Tier 1 Loot",
+      "printTraitHtml": "<b>Three-Way Team:</b> Whenever <b>Daze!</b> is played, gets <b>2 free 1-Dmg swings</b>!<br><b>Drop:</b> 1 Tier 1 Loot.",
+      "art": "art_mon_three_kobolds.png",
+      "flavor": "Hello yes, I am definitely one regular tall gentleman."
+    }
+  ],
+  "bosses": [
+    {
+      "id": "B-01",
+      "name": "Sir Clanks-a-Lot",
+      "title": "the Over-Armored Warden",
+      "baseHp": 10,
+      "hpPerExtraHero": 4,
+      "cunning": 4,
+      "baseDmg": 2,
+      "traitId": "too-much-metal",
+      "trait": "Way Too Much Metal: All Brawn Rank 1–2 attacks bounce (0 Dmg) unless Armor-pierced!",
+      "reward": "1 Tier 2–3 Boss Loot per Hero + Shiny Basement Key",
+      "printTraitHtml": "<b>BOSS • Too Much Metal:</b> <b>Brawn (Red) Rank 1–2</b> hits bounce off (0 Dmg)!<br><b>Drop:</b> Tier 2–3 Boss Loot/Hero + Basement Key.",
+      "art": "art_boss_sir_clanks.png",
+      "flavor": "CLANK-CLANK-SQUEAK! Wait, where did I drop my oil can?"
+    },
+    {
+      "id": "B-02",
+      "name": "Baron Von Boo",
+      "title": "the Dramatic Basement Ghost",
+      "baseHp": 10,
+      "hpPerExtraHero": 4,
+      "cunning": 4,
+      "baseDmg": 2,
+      "traitId": "theatrical-encore",
+      "trait": "Theatrical Encore: Once per round, when a Hero resolves a Messy Desperation Card, heal 1 HP!",
+      "reward": "1 Tier 2–3 Boss Loot per Hero + Shiny Basement Key",
+      "printTraitHtml": "<b>BOSS • Theatrical Encore:</b> Once/round, when a Hero flips a <b>Messy Desperation</b> card, heals <b>+1 HP</b>!<br><b>Drop:</b> Tier 2–3 Boss Loot/Hero + Basement Key.",
+      "art": "art_boss_baron_boo.png",
+      "flavor": "BEHOLD MY SPOOKINESS! ...Wait, is my cape tangled?"
+    }
+  ],
+  "events": [
+    {
+      "id": "E-01",
+      "title": "Slippery Banana-Peel Hallway",
+      "printTitle": "Slippery Banana-Peel Hall",
+      "subtype": "trap",
+      "badge": "TRAP",
+      "art": "art_evt_banana_hall.png",
+      "prompt": "Someone tossed an entire crate of bright yellow banana peels across the tiles! Your boots start sliding like ice skates.",
+      "printFlavor": "Crate of yellow peels covers the floor!",
+      "choices": [
+        "A) Zip 3+ Stunt to surf gracefully across & draw 1 Action card.",
+        "B) Wipe out heroically — take 2 Dmg & gain 1 Cramp!."
+      ],
+      "improvisePrompt": "Or Improvise...",
+      "printRulesHtml": "<b>A)</b> Zip 3+ Stunt: surf & draw 1 Action.<br><b>B)</b> Wipe out: 2 Dmg & 1 Cramp!.<br><i>Or Improvise...</i>"
+    },
+    {
+      "id": "E-02",
+      "title": "Wobbly Loose Floorboards",
+      "subtype": "trap",
+      "badge": "TRAP",
+      "art": "art_evt_floorboards.png",
+      "prompt": "Every second stone tile wobbles like a seesaw above a shallow puddle of sticky mud!",
+      "printFlavor": "Every stone wobbles over bubbly mud!",
+      "choices": [
+        "A) Grit 4+ Stunt to balance across cleanly.",
+        "B) Splat! Take 1 Dmg and your next room move costs 2 Actions."
+      ],
+      "improvisePrompt": "Or Improvise...",
+      "printRulesHtml": "<b>A)</b> Grit 4+ Stunt to balance across.<br><b>B)</b> Splat: 1 Dmg & next move costs 2 Actions.<br><i>Or Improvise...</i>"
+    },
+    {
+      "id": "E-03",
+      "title": "Complimenting Magic Mirror",
+      "subtype": "curious",
+      "badge": "CURIOUS",
+      "art": "art_evt_magic_mirror.png",
+      "prompt": "A gilded mirror beams happily: \"My goodness, what splendid hair you have today!\"",
+      "printFlavor": "\"My, what splendid hair you have today!\"",
+      "choices": [
+        "A) Pose proudly! Heal +2 HP and draw 1 Action card.",
+        "B) Polish the glass (Spark 3+): peek at 1 face-down Room card."
+      ],
+      "improvisePrompt": "Or Improvise...",
+      "printRulesHtml": "<b>A)</b> Pose proudly: heal +2 HP & draw 1 Action.<br><b>B)</b> Spark 3+ polish: peek 1 face-down Room.<br><i>Or Improvise...</i>"
+    },
+    {
+      "id": "E-04",
+      "title": "Bubbling Soda-Potion Bench",
+      "subtype": "curious",
+      "badge": "CURIOUS",
+      "art": "art_evt_soda_bench.png",
+      "prompt": "Bottles of fizzy berry, lemon, and grape potions bubble beside a sticky handwritten recipe!",
+      "printFlavor": "Berry, lemon & grape flasks fizz beside a note!",
+      "choices": [
+        "A) Sip safely: heal +2 HP (no roll needed).",
+        "B) Mix two colors (Spark 4+): success = draw 1 Belt Consumable; fail = 1 Dmg + Dealer Twist."
+      ],
+      "improvisePrompt": "Or Improvise...",
+      "printRulesHtml": "<b>A)</b> Safe sip: heal +2 HP.<br><b>B)</b> Spark 4+ mix: draw 1 Belt item (fail: 1 Dmg + Twist).<br><i>Or Improvise...</i>"
+    },
+    {
+      "id": "E-05",
+      "title": "Singing Locked Treasure Chest",
+      "printTitle": "Singing Locked Chest",
+      "subtype": "curious",
+      "badge": "CURIOUS",
+      "art": "art_evt_singing_chest.png",
+      "prompt": "A brass padlock on a bouncy wooden chest is humming an off-key opera ballad!",
+      "printFlavor": "A bouncy padlock hums off-key opera!",
+      "choices": [
+        "A) Zip or Brawn 4+ Stunt: pop it open for 1 Tier 1 Loot!",
+        "B) Hum along awkwardly and leave it alone (Dealer draws 1 Twist)."
+      ],
+      "improvisePrompt": "Or Improvise...",
+      "printRulesHtml": "<b>A)</b> Zip/Brawn 4+: open for 1 Tier 1 Loot!<br><b>B)</b> Leave alone (Dealer draws 1 Twist).<br><i>Or Improvise...</i>"
+    },
+    {
+      "id": "E-06",
+      "title": "Ticklish Gargoyle Statue",
+      "subtype": "trap",
+      "badge": "TRAP",
+      "art": "art_evt_gargoyle.png",
+      "prompt": "A stone gargoyle blocks the archway, grinning suspiciously while holding a tiny brass bell.",
+      "printFlavor": "A plump stone gargoyle clutches a brass bell.",
+      "choices": [
+        "A) Tickle its chin (Zip 3+): it giggles aside and drops 1 Action card!",
+        "B) Try sneaking past (Grit 4+): fail = rings loudly & Dealer draws 1 Twist."
+      ],
+      "improvisePrompt": "Or Improvise...",
+      "printRulesHtml": "<b>A)</b> Zip 3+ chin tickle: giggles & drops 1 Action.<br><b>B)</b> Grit 4+ sneak (fail: bell rings, Dealer Twist).<br><i>Or Improvise...</i>"
+    }
+  ],
+  "merchants": [
+    {
+      "id": "M-01",
+      "name": "Barnaby the Bargain Goblin",
+      "badge": "MERCHANT",
+      "art": "art_npc_barnaby_goblin.png",
+      "greeting": "A cheerful goblin in a patched vest rolls out a velvet blanket covered in mismatched spoons and shields!",
+      "printFlavor": "<i>Stays face-up on tile (1 Action to trade).</i>",
+      "deals": [
+        "Trade Gear: Discard 1 equipped or spare Gear to draw 2 Tier 1 Loot and keep 1.",
+        "Bundle Deal: Trade 2 Belt Consumables for 1 Tier 1 Loot."
+      ],
+      "improviseDeal": "Or Improvise: Zip/Spark 4+ haggle for 1 free Action draw (once/Hero).",
+      "printRulesHtml": "<b>Trade:</b> Swap 1 Gear → draw 2 Tier 1 Loot, keep 1; OR 2 Consumables → 1 Tier 1 Loot. (Zip/Spark 4+ haggle!)"
+    },
+    {
+      "id": "M-02",
+      "name": "Granny Fizz's Portable Potion Cart",
+      "printTitle": "Granny Fizz's Potion Cart",
+      "badge": "MERCHANT",
+      "art": "art_npc_granny_fizz.png",
+      "greeting": "A sweet badger-granny wheels up a kettle cart smelling of cinnamon and fizzy berries!",
+      "printFlavor": "<i>Stays face-up on tile (1 Action to trade).</i>",
+      "deals": [
+        "Brew Swap: Trade 1 spare Gear or Consumable for Strawberry Fizz Potion or Wakey-Wakey Smelling Salts.",
+        "Card Trade: Discard 2 Grit/Spark Action cards to heal +3 HP."
+      ],
+      "improviseDeal": "Or Improvise...",
+      "printRulesHtml": "<b>Swap:</b> 1 Gear/Item → Fizz Potion OR Smelling Salts (Revive); OR discard 2 Grit/Spark → heal +3 HP!"
+    }
+  ],
+  "stories": [
+    {
+      "id": "S-01A",
+      "part": 1,
+      "chain": 1,
+      "physicalOnly": true,
+      "name": "Clumsy Blacksmith Pip (Part I)",
+      "printTitle": "Clumsy Blacksmith Pip",
+      "badge": "STORY PART I",
+      "art": "art_npc_pip_smith.png",
+      "scene": "Young blacksmith Pip accidentally welded his tongs to an anvil and needs spare scrap metal!",
+      "printFlavor": "Pip welded his tongs to his anvil!",
+      "choices": [
+        "A) Help Pip: Give 1 spare/equipped Weapon or Armor → tuck S-01B (Helped).",
+        "B) Pilfer His Lunchbox: Grab 1 Tier 1 Loot → tuck S-01B (Grumpy!).",
+        "Or Improvise..."
+      ],
+      "callbackId": "S-01B",
+      "printRulesHtml": "<b>A)</b> Gift 1 Weapon/Armor (get free Tier 0) → Tuck <b>S-01B</b> in Story Stack!<br><b>B)</b> Pilfer lunchbox: Tier 1 Loot + grumpy S-01B!"
+    },
+    {
+      "id": "S-01B",
+      "part": 2,
+      "chain": 1,
+      "physicalOnly": true,
+      "name": "Master Pip's Turbo Forge (Part II)",
+      "printTitle": "Master Pip's Turbo Forge",
+      "badge": "STORY PART II",
+      "art": "art_npc_pip_smith.png",
+      "scene": "Pip's forge is roaring on Floor 2! He immediately spots your party.",
+      "printFlavor": "Place in Floor 2+ Story Room!",
+      "choices": [
+        "If Helped: reforge Weapon (+1 Strike) OR gift 1 free Tier 2–3 Weapon.",
+        "If Pilfered: fight 6 HP Clanky Helper Bot (2 Dmg) before looting!"
+      ],
+      "printRulesHtml": "<b>Helped:</b> Upgrade 1 Weapon +1 Dmg OR free Tier 2–3 Weapon!<br><b>Pilfered:</b> Fight 6 HP Helper Bot (2 Dmg) first!"
+    },
+    {
+      "id": "S-02A",
+      "part": 1,
+      "chain": 2,
+      "physicalOnly": true,
+      "name": "Upside-Down Mapmaker Barnacle (Part I)",
+      "printTitle": "Upside-Down Mapmaker Barnacle",
+      "badge": "STORY PART I",
+      "art": "art_npc_barnacle_map.png",
+      "scene": "Explorer Barnacle tripped holding his giant map upside down and sprained an ankle!",
+      "printFlavor": "Barnacle tripped tangled in his map!",
+      "choices": [
+        "A) Patch Him Up: Discard 1 Consumable OR 4+ Grit/Zip Stunt → tuck S-02B.",
+        "B) Laugh & Keep Moving: Take 1 Action draw, no Part II callback.",
+        "Or Improvise..."
+      ],
+      "callbackId": "S-02B",
+      "printRulesHtml": "<b>A)</b> Spend 1 Consumable OR 4+ Grit/Zip Stunt → Tuck <b>S-02B</b> in Story Stack!<br><b>B)</b> Laugh & walk on (+1 Action)."
+    },
+    {
+      "id": "S-02B",
+      "part": 2,
+      "chain": 2,
+      "physicalOnly": true,
+      "name": "Navigator Barnacle's Shortcut (Part II)",
+      "printTitle": "Navigator Barnacle's Shortcut",
+      "badge": "STORY PART II",
+      "art": "art_npc_barnacle_map.png",
+      "scene": "Barnacle greets you on Floor 2 with his map right-side up at last!",
+      "printFlavor": "Place in Floor 2+ Story Room!",
+      "choices": [
+        "Reward: peek at any 3 face-down Square Rooms AND draw 1 free Belt Relic/Consumable."
+      ],
+      "printRulesHtml": "<b>Reward:</b> Immediately <b>peek at 3 face-down Square Rooms</b> on this floor AND draw <b>1 free Belt Relic/Item</b>!"
+    },
+    {
+      "id": "S-03A",
+      "part": 1,
+      "chain": 3,
+      "physicalOnly": true,
+      "name": "Sir Reginald the Posh Badger (Part I)",
+      "printTitle": "Sir Reginald the Posh Badger",
+      "badge": "STORY PART I",
+      "art": "art_npc_reginald_badger.png",
+      "scene": "A dapper badger in a tiny top hat politely requests a small picnic contribution!",
+      "printFlavor": "Requests a polite picnic donation!",
+      "choices": [
+        "A) Share Kindly: Give 1 Consumable OR discard 2 matching-Suit Action cards → tuck S-03B (Friend).",
+        "B) Rude Shoo: Snatch 1 Action card → tuck S-03B (Snubbed).",
+        "Or Improvise..."
+      ],
+      "callbackId": "S-03B",
+      "printRulesHtml": "<b>A)</b> Share 1 Consumable OR 2 matching Suits → Tuck <b>S-03B</b>.<br><b>B)</b> Rude shoo (+1 Action, snubbed S-03B)."
+    },
+    {
+      "id": "S-03B",
+      "part": 2,
+      "chain": 3,
+      "physicalOnly": true,
+      "name": "Sir Reginald's Fancy Trunk (Part II)",
+      "printTitle": "Sir Reginald's Fancy Trunk",
+      "badge": "STORY PART II",
+      "art": "art_npc_reginald_badger.png",
+      "scene": "Sir Reginald pops open his brass-bound steamer trunk on Floor 2!",
+      "printFlavor": "Place in Floor 2+ Story Room!",
+      "choices": [
+        "If Shared: Draw 3 Loot (incl. Tier 2–3) and keep 2.",
+        "If Snubbed: lose 1 Belt item (or take 2 Dmg) unless calmed with 5+ Spark apology Stunt."
+      ],
+      "printRulesHtml": "<b>Shared:</b> Draw 3 Loot (incl. Tier 2–3), keep 2!<br><b>Snubbed:</b> Lose 1 Belt item (or 2 Dmg) unless 5+ Spark apology!"
+    }
+  ],
+  "themes": [
+    {
+      "id": "T-01",
+      "name": "The Wobbly Shifting Maze",
+      "accent": "#2E7D6B",
+      "art": "art_theme_maze.png",
+      "icon": "icon_doorway.png",
+      "glyph": "M4 4H20V20H4V4Z",
+      "rule": "Once per full round, at the end of a Dealer turn, the Dealer may swap any 2 unflipped Square Room tiles on the map!",
+      "printRulesHtml": "Once per full round (after a Dealer turn), the Dealer may <b>swap any 2 unflipped Square Rooms</b> on the layout!",
+      "flavor": "Didn't that hallway go left five minutes ago?"
+    },
+    {
+      "id": "T-02",
+      "name": "Goblin Flea Market",
+      "accent": "#D99B26",
+      "art": "art_theme_market.png",
+      "icon": "icon_wild.png",
+      "glyph": "M4 4H20V20H4V4Z",
+      "rule": "All Trap / Surprise Rooms act as shady bargain stalls too — any Monster may be bribed out of fighting with 1 Gear/Consumable via a 3+ Zip/Spark Stunt!",
+      "printRulesHtml": "Trap Rooms double as bargain stalls! Any Monster can be <b>bribed</b> out of fighting with 1 Gear/Item + a <b>3+</b> Zip/Spark Stunt.",
+      "flavor": "Everything's on sale—especially questionable cheese."
+    },
+    {
+      "id": "T-03",
+      "name": "The Haunted Attic Basement",
+      "accent": "#7E4BB5",
+      "art": "art_theme_attic.png",
+      "icon": "icon_spark.png",
+      "glyph": "M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5Z",
+      "rule": "All Spark (Purple) cards deal +1 Dmg (Heroes AND Monsters!), and the Sanctuary Shrine has a polite Ghost Bouncer guarding the cocoa.",
+      "printRulesHtml": "All <b>Spark (Purple)</b> cards deal <b>+1 Dmg</b> (for Heroes AND Monsters)! Cocoa Shrine has a polite Ghost Bouncer.",
+      "flavor": "Spooky cobwebs, surprisingly cozy throw pillows."
+    }
+  ],
+  "twists": [
+    {
+      "id": "TW-01",
+      "name": "Musical Rooms!",
+      "copies": 1,
+      "art": "art_twist_rooms.png",
+      "effect": "Between Hero turns: Swap positions of any 2 unflipped Square Room cards.",
+      "printRulesHtml": "<b>Between Hero turns:</b> Swap positions of any <b>2 unflipped</b> Square Room tiles!",
+      "flavor": "Who rearranged the furniture?!"
+    },
+    {
+      "id": "TW-02",
+      "name": "Musical Rooms!",
+      "copies": 1,
+      "art": "art_twist_rooms.png",
+      "effect": "Between Hero turns: Swap positions of any 2 unflipped Square Room cards.",
+      "printRulesHtml": "<b>Between Hero turns:</b> Swap positions of any <b>2 unflipped</b> Square Room tiles!",
+      "flavor": "Who rearranged the furniture?!"
+    },
+    {
+      "id": "TW-03",
+      "name": "Musical Rooms!",
+      "copies": 1,
+      "art": "art_twist_rooms.png",
+      "effect": "Between Hero turns: Swap positions of any 2 unflipped Square Room cards.",
+      "printRulesHtml": "<b>Between Hero turns:</b> Swap positions of any <b>2 unflipped</b> Square Room tiles!",
+      "flavor": "Who rearranged the furniture?!"
+    },
+    {
+      "id": "TW-04",
+      "name": "Sticky Door Jam!",
+      "copies": 1,
+      "art": "art_twist_door_jam.png",
+      "effect": "Between Hero turns: Place a jammed barrier between 2 adjacent Rooms (1 Action 3+ Brawn Stunt to pry open).",
+      "printRulesHtml": "<b>Between Hero turns:</b> Jam seam between 2 Rooms (1 Action + <b>3+ Brawn</b> Stunt to pry open).",
+      "flavor": "Someone spilled super-duper jam on the hinges!"
+    },
+    {
+      "id": "TW-05",
+      "name": "Sticky Door Jam!",
+      "copies": 1,
+      "art": "art_twist_door_jam.png",
+      "effect": "Between Hero turns: Place a jammed barrier between 2 adjacent Rooms (1 Action 3+ Brawn Stunt to pry open).",
+      "printRulesHtml": "<b>Between Hero turns:</b> Jam seam between 2 Rooms (1 Action + <b>3+ Brawn</b> Stunt to pry open).",
+      "flavor": "Someone spilled super-duper jam on the hinges!"
+    },
+    {
+      "id": "TW-06",
+      "name": "Hall Monitor Patrol!",
+      "copies": 1,
+      "art": "art_twist_mischief.png",
+      "effect": "After a Hero turn: Slide 1 unengaged revealed Monster 1 room closer to the nearest Hero.",
+      "printRulesHtml": "<b>After Hero turn:</b> Slide 1 unengaged revealed Monster <b>1 room closer</b> to nearest Hero!",
+      "flavor": "NO RUNNING IN THE CORRIDORS!"
+    },
+    {
+      "id": "TW-07",
+      "name": "Hall Monitor Patrol!",
+      "copies": 1,
+      "art": "art_twist_mischief.png",
+      "effect": "After a Hero turn: Slide 1 unengaged revealed Monster 1 room closer to the nearest Hero.",
+      "printRulesHtml": "<b>After Hero turn:</b> Slide 1 unengaged revealed Monster <b>1 room closer</b> to nearest Hero!",
+      "flavor": "NO RUNNING IN THE CORRIDORS!"
+    },
+    {
+      "id": "TW-08",
+      "name": "Boss Espresso Shot!",
+      "copies": 1,
+      "art": "art_twist_mischief.png",
+      "effect": "During combat: Active Monster gains +2 HP (up to Max) OR draws 2 Action cards.",
+      "printRulesHtml": "<b>In combat:</b> Active Monster gains <b>+2 HP</b> (up to Max) OR draws <b>2 Action</b> cards!",
+      "flavor": "Double shot with whipped cream, let's GO!"
+    },
+    {
+      "id": "TW-09",
+      "name": "Boss Espresso Shot!",
+      "copies": 1,
+      "art": "art_twist_mischief.png",
+      "effect": "During combat: Active Monster gains +2 HP (up to Max) OR draws 2 Action cards.",
+      "printRulesHtml": "<b>In combat:</b> Active Monster gains <b>+2 HP</b> (up to Max) OR draws <b>2 Action</b> cards!",
+      "flavor": "Double shot with whipped cream, let's GO!"
+    },
+    {
+      "id": "TW-10",
+      "name": "Untied Shoelaces!",
+      "copies": 1,
+      "art": "art_twist_mischief.png",
+      "effect": "When Hero enters combat or moves: Target Hero adds 1 Cramp! and loses 1 Exploration Action (min 0).",
+      "printRulesHtml": "<b>When Hero moves or fights:</b> Target takes <b>1 Cramp!</b> and loses <b>1 Exploration Action</b>.",
+      "flavor": "Hey, your shoe's untied! Made ya look!"
+    },
+    {
+      "id": "TW-11",
+      "name": "Untied Shoelaces!",
+      "copies": 1,
+      "art": "art_twist_mischief.png",
+      "effect": "When Hero enters combat or moves: Target Hero adds 1 Cramp! and loses 1 Exploration Action (min 0).",
+      "printRulesHtml": "<b>When Hero moves or fights:</b> Target takes <b>1 Cramp!</b> and loses <b>1 Exploration Action</b>.",
+      "flavor": "Hey, your shoe's untied! Made ya look!"
+    },
+    {
+      "id": "TW-12",
+      "name": "Surprise Intern!",
+      "copies": 1,
+      "art": "art_mon_goblin_intern.png",
+      "spawnMonsterId": "MON-01",
+      "effect": "Between Hero turns: Spawn a 3 HP Sneaky Goblin Intern (MON-01) inside any cleared empty room!",
+      "printRulesHtml": "<b>Between Hero turns:</b> Spawn a <b>3 HP Sneaky Goblin Intern</b> in any empty cleared room!",
+      "flavor": "Hi! Where do I put these extra brooms?"
+    }
+  ]
+}

@@ -120,6 +120,9 @@ export function gearRuntimeFromId(gid) {
     gritIgnoresArmor: Boolean(g.gritIgnoresArmor),
     type: g.type || null,
     heal: g.heal,
+    soloHeal: g.soloHeal,
+    reviveHp: g.reviveHp,
+    reviveCards: g.reviveCards,
     rule: g.rule,
   };
 }

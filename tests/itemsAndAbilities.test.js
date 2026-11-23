@@ -166,14 +166,14 @@ describe('Gear abilities — Mallet / Boom-Hammer / Twin Knives / Armor', () => 
   it('Comically Large Mallet (G-16) Grit attacks bypass MON-02 Rattle Armor', () => {
     const { state } = makeClashState({
       weaponId: 'G-16',
-      monsterId: 'MON-02', // 5 HP, rattle-armor
+      monsterId: 'MON-02', // 4 HP, rattle-armor
       activeSuit: 'grit',
       activeRank: 2,
       hand: [{ id: 'g5', type: 'rank', suit: 'grit', rank: 5, name: 'grit 5' }],
     });
     const r = applyAction(state, { type: 'clash-play', cardId: 'g5' }, 'h1');
     expect(r.ok).toBe(true);
-    expect(r.state.clash.monsterHp).toBe(3); // full 2 strike damage, not absorbed
+    expect(r.state.clash.monsterHp).toBe(2); // full 2 strike damage, not absorbed
     expect(r.state.clash.ignoredFirstHit).toBe(false);
   });
 
@@ -206,7 +206,7 @@ describe('Gear abilities — Mallet / Boom-Hammer / Twin Knives / Armor', () => 
     const { state } = makeClashState({
       heroId: 'H-03',
       weaponId: 'G-13',
-      monsterId: 'MON-03', // 6 HP
+      monsterId: 'MON-03', // 5 HP
       activeSuit: 'zip',
       activeRank: 2,
       hand: [
@@ -216,13 +216,13 @@ describe('Gear abilities — Mallet / Boom-Hammer / Twin Knives / Armor', () => 
     });
     const first = applyAction(state, { type: 'clash-play', cardId: 'z4' }, 'h1');
     expect(first.ok).toBe(true);
-    expect(first.state.clash.monsterHp).toBe(5); // 1 strike
+    expect(first.state.clash.monsterHp).toBe(4); // 1 strike
     expect(first.state.clash.twinRank).toBe(4);
     expect(first.state.clash.whoseTurn).toBe('hero');
 
     const second = applyAction(first.state, { type: 'clash-play', cardId: 'b4' }, 'h1');
     expect(second.ok).toBe(true);
-    expect(second.state.clash.monsterHp).toBe(4); // +1 strike from 2nd matching-rank card
+    expect(second.state.clash.monsterHp).toBe(3); // +1 strike from 2nd matching-rank card
     expect(second.state.clash.twinRank).toBeNull();
     expect(second.state.clash.whoseTurn).toBe('monster');
 
@@ -284,7 +284,7 @@ describe('Hero perks — no accidental burn on legal/special plays', () => {
     const rUp = applyAction(sUpgrade, { type: 'clash-play', cardId: 'b3' }, 'h1');
     expect(rUp.ok).toBe(true);
     expect(rUp.state.heroes.h1.perkUsedThisClash).toBe(true);
-    expect(rUp.state.clash.activeRank).toBe(4);
+    expect(rUp.state.clash.activeRank).toBe(5); // 3 + 2 Big Swing rank bonus
   });
 
   it('Improvised Zap (H-04) does not fire on legal Spark plays, only off-suit Spark plays', () => {
