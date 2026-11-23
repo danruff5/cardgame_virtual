@@ -1,4 +1,4 @@
-import { THEMES, BOSSES, SUITS, getGear } from '../data/index.js';
+import { RULES, THEMES, BOSSES, SUITS, getGear } from '../data/index.js';
 import { adjacentOrthogonal, tilesConnect } from '../game/state.js';
 import { bossGather } from '../game/boss.js';
 import {
@@ -431,6 +431,30 @@ function renderRoomActions(state, isDealer, meId, activeCarryId = null, carrying
         `<button type="button" data-use-belt="${beltHeal}" ${atFull ? 'disabled title="Already at full HP"' : ''}>Drink Fizz Potion (+4 HP · free)</button>`,
       );
     }
+    const isSolo = Object.keys(state.heroes || {}).length === 1;
+    const soloSaltsIdx = isSolo
+      ? (hero?.belt || []).findIndex((b) => {
+          const g = b.gearId || b.id;
+          return g === 'G-25' || g === 'G-26';
+        })
+      : -1;
+    if (soloSaltsIdx >= 0) {
+      const atFull = (hero.hp ?? 0) >= (hero.maxHp ?? 10);
+      buttons.push(
+        `<button type="button" data-use-belt="${soloSaltsIdx}" ${atFull ? 'disabled title="Already at full HP"' : ''}>Whiff Smelling Salts (+${RULES.smellingSaltsSoloHeal || 3} HP · free)</button>`,
+      );
+    }
+    const stairsTile = state.map.tiles.find((t) => t.kind === 'stairs');
+    const someoneOnUnlockedStairs =
+      Boolean(state.floor?.stairsUnlocked) &&
+      stairsTile &&
+      !stairsTile.locked &&
+      Object.values(state.heroes || {}).some((h) => !h.downed && h.roomKey === stairsTile.key);
+    if (someoneOnUnlockedStairs) {
+      buttons.push(
+        `<button type="button" class="primary" id="btn-descend-stairs">Descend Stairs Together (Free)</button>`,
+      );
+    }
   }
 
   buttons.push(`<button type="button" id="btn-end-turn">End turn</button>`);
@@ -587,7 +611,19 @@ function renderFocusedHero(state, focusedId, activeId, isDealer, meId) {
           actionHtml = `<span class="belt-status-chip">+4 HP (free)</span>`;
         }
       } else if (gid === 'G-25' || gid === 'G-26') {
-        if (canControlBelt && canReviveExplore && downedInSameRoom.length) {
+        const isSoloParty = Object.keys(state.heroes || {}).length === 1;
+        if (isSoloParty) {
+          if (canControlBelt) {
+            const healNote = hero.downed
+              ? '<span class="belt-status-chip">Downed</span>'
+              : (hero.hp ?? 0) >= (hero.maxHp ?? 10)
+                ? '<span class="belt-status-chip">Full HP</span>'
+                : '';
+            actionHtml = `${healNote}<button type="button" class="belt-use-btn" data-use-belt="${i}" data-belt-owner="${escAttr(focusedId)}" ${canHealNow ? '' : 'disabled'}>Whiff (+${RULES.smellingSaltsSoloHeal || 3} HP)</button>`;
+          } else {
+            actionHtml = `<span class="belt-status-chip">+${RULES.smellingSaltsSoloHeal || 3} HP (free)</span>`;
+          }
+        } else if (canControlBelt && canReviveExplore && downedInSameRoom.length) {
           actionHtml = downedInSameRoom
             .map(
               ([allyPid, ally]) =>

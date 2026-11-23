@@ -495,6 +495,9 @@ function wireTable() {
   document.getElementById('btn-shrine')?.addEventListener('click', () => {
     room.dispatch(withPlayer({ type: 'interact', subtype: 'shrine' }));
   });
+  document.getElementById('btn-descend-stairs')?.addEventListener('click', () => {
+    room.dispatch({ type: 'descend-stairs' });
+  });
   document.querySelectorAll('[data-revive]').forEach((btn) => {
     btn.addEventListener('click', () => {
       room.dispatch(

@@ -9,6 +9,7 @@ import {
   renderCardMention,
 } from './cardView.js';
 import { ASSET, SUIT_META } from '../data/artMeta.js';
+import { RULES } from '../data/index.js';
 import { DESPERATION } from '../data/desperation.js';
 import { isLegalPlay, isCramp, isSpecial, isWild, heroHasLegalPlay } from '../game/clash.js';
 import { bossJoinCheck } from '../game/boss.js';
@@ -364,9 +365,15 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
   const hasCookie = Boolean(playOpts.forceParry);
   const belt = hero?.belt || [];
   const confettiIdx = belt.findIndex((b) => (b.gearId || b.id) === 'G-29');
+  const isSolo = Object.keys(state.heroes || {}).length === 1;
   const healItems = belt
     .map((b, i) => ({ b, i, gid: b.gearId || b.id }))
-    .filter((x) => x.gid === 'G-27' || x.gid === 'G-28');
+    .filter(
+      (x) =>
+        x.gid === 'G-27' ||
+        x.gid === 'G-28' ||
+        (isSolo && (x.gid === 'G-25' || x.gid === 'G-26')),
+    );
   const twinPending = clash.twinRank != null;
   const fighterNames = fighters.map((pid) => state.heroes[pid]?.name || pid);
   const heroDeltas = fx.heroDeltas || {};
@@ -388,6 +395,7 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
     : `${clash.monsterName}'s turn`;
 
   // —— Actions tray (bottom-left) ——
+  const extraHp = RULES.bossHpPerExtraHero || 4;
   const joinHtml = (() => {
     if (!clash.isBoss || closing) return '';
     const outsiders = Object.keys(state.heroes || {}).filter((pid) => !fighters.includes(pid));
@@ -396,14 +404,14 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
         .filter((pid) => bossJoinCheck(state, pid).ok)
         .map(
           (pid) =>
-            `<button type="button" data-clash-join="${escAttr(pid)}">Bring in ${esc(state.heroes[pid].name)} (+3 Boss HP)</button>`,
+            `<button type="button" data-clash-join="${escAttr(pid)}">Bring in ${esc(state.heroes[pid].name)} (+${extraHp} Boss HP)</button>`,
         )
         .join('');
     }
     if (!outsiders.includes(meId)) return '';
     const check = bossJoinCheck(state, meId);
     return check.ok
-      ? `<button class="primary" type="button" data-clash-join="${escAttr(meId)}">Join the fight (+3 Boss HP)</button>`
+      ? `<button class="primary" type="button" data-clash-join="${escAttr(meId)}">Join the fight (+${extraHp} Boss HP)</button>`
       : `<p class="muted clash-tray-note">${esc(check.error)}</p>`;
   })();
 
@@ -414,10 +422,13 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
     !(hasCookie && fighterHand.some((c) => !isCramp(c)));
 
   const healButtonsHtml = healItems
-    .map(
-      ({ i }) =>
-        `<button type="button" data-clash-belt="${i}" data-belt-mode="heal" ${(hero?.hp ?? 0) >= (hero?.maxHp ?? 10) ? 'disabled' : ''}>Drink Fizz Potion (+4 HP · free)</button>`,
-    )
+    .map(({ i, gid }) => {
+      const isSalts = gid === 'G-25' || gid === 'G-26';
+      const label = isSalts
+        ? `Whiff Smelling Salts (+${RULES.smellingSaltsSoloHeal || 3} HP · free)`
+        : 'Drink Fizz Potion (+4 HP · free)';
+      return `<button type="button" data-clash-belt="${i}" data-belt-mode="heal" ${(hero?.hp ?? 0) >= (hero?.maxHp ?? 10) ? 'disabled' : ''}>${label}</button>`;
+    })
     .join('');
 
   const actionsHtml = `

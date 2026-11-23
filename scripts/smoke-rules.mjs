@@ -93,8 +93,8 @@ assert(
   'big swing classifies',
 );
 assert(
-  classifyPlay({ type: 'rank', suit: 'brawn', rank: 2 }, clash, { bigSwing: true }) === 'parry',
-  'big swing 2+1 = parry vs 3',
+  classifyPlay({ type: 'rank', suit: 'brawn', rank: 2 }, clash, { bigSwing: true }) === 'clean',
+  'big swing 2+2 = clean strike vs 3',
 );
 
 // Start a monster clash via action

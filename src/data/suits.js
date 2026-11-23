@@ -1,10 +1,11 @@
-/** Combat suits from rulebook / action deck docs. */
-export const SUITS = {
-  brawn: { id: 'brawn', name: 'Brawn', color: '#D9483B', hex: '#D9483B' },
-  grit: { id: 'grit', name: 'Grit', color: '#2F6FB8', hex: '#2F6FB8' },
-  zip: { id: 'zip', name: 'Zip', color: '#E3A723', hex: '#E3A723' },
-  spark: { id: 'spark', name: 'Spark', color: '#7E4BB5', hex: '#7E4BB5' },
-  wild: { id: 'wild', name: 'Heroic Wild!', color: '#D99B26', hex: '#D99B26' },
-};
+import { CATALOG } from './catalog.js';
+
+/** Combat suits derived from canonical cards.json. */
+export const SUITS = Object.fromEntries(
+  Object.entries(CATALOG.suits).map(([key, s]) => [
+    key,
+    { id: s.id, name: s.name, color: s.color, hex: s.hex || s.color },
+  ]),
+);
 
 export const SUIT_IDS = ['brawn', 'grit', 'zip', 'spark'];
