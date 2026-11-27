@@ -413,4 +413,59 @@ describe('defeat banner, disabled combat twist, and stale lobby status (virtual_
     });
     expect(html).toContain('data-play-twist="TW-08" disabled');
   });
+
+  it('omits belt-overflow overlay in tableView during clash (virtual_17)', () => {
+    const { state, heroPlayerId, dealerId } = startExploringFloor({ layoutMode: 'fixed' });
+    const s = structuredClone(state);
+    s.phase = 'clash';
+    s.pending = {
+      kind: 'belt-overflow',
+      heroPlayerId,
+      options: [
+        { id: 'G-25', name: 'Wakey-Wakey Smelling Salts' },
+        { id: 'G-27', name: 'Strawberry Fizz Potion' },
+      ],
+    };
+    const html = renderTable(publicStateFor(s, dealerId), {
+      isDealer: true,
+      meId: dealerId,
+      roomCode: 'TEST',
+      role: 'dealer',
+      status: 'Floor 1 active.',
+      error: '',
+    });
+    expect(html).not.toContain('table-prompt-overlay');
+    expect(html).not.toContain('data-belt-discard');
+  });
+
+  it('shows +4/extra Hero in Boss Gather Bar instead of stale +3 (virtual_20)', () => {
+    const { state: base, dealerId } = startExploringFloor({ layoutMode: 'fixed' });
+    const { state } = ensureHeroInKind(base, 'hero-1', 'boss');
+    state.map.tiles.find((t) => t.kind === 'boss').cleared = false;
+    const html = renderTable(publicStateFor(state, dealerId), {
+      isDealer: true,
+      meId: dealerId,
+      roomCode: 'TEST',
+      role: 'dealer',
+      status: 'Floor 1 active.',
+      error: '',
+    });
+    expect(html).toContain('(+4/extra Hero)');
+    expect(html).not.toContain('(+3/extra Hero)');
+  });
+
+  it('updates stale Floor 1 active status on Floor 2+ (virtual_21)', () => {
+    const { state } = twoHeroState();
+    state.floorNumber = 2;
+    const html = renderTable(publicStateFor(state, 'h1'), {
+      isDealer: false,
+      meId: 'h1',
+      roomCode: 'ROOM',
+      role: 'hero',
+      status: 'Floor 1 active.',
+      error: '',
+    });
+    expect(html).toContain('Floor 2 active.');
+    expect(html).not.toContain('Floor 1 active.');
+  });
 });

@@ -159,7 +159,7 @@ function renderBossGatherBar(state, isDealer, meId) {
       <div class="boss-gather-meta">
         <strong>${esc(gather.boss.name)} waits</strong>
         <span class="muted">
-          In chamber: <strong>${count ? esc(names.join(', ')) : 'none'}</strong> · ${gather.projectedHp} HP (+3/extra Hero)
+          In chamber: <strong>${count ? esc(names.join(', ')) : 'none'}</strong> · ${gather.projectedHp} HP (+${gather.boss.hpPerExtraHero ?? RULES.bossHpPerExtraHero ?? 4}/extra Hero)
         </span>
         ${hint ? `<span class="muted boss-gather-hint">${esc(hint)}</span>` : ''}
       </div>
@@ -294,6 +294,7 @@ function escapeHtml(s) {
 }
 
 function renderPendingOverlay(state, isDealer, meId) {
+  if (state.phase === 'clash') return '';
   const pending = state.pending;
   if (!pending) return '';
   const mine = isDealer || pending.heroPlayerId === meId;
@@ -893,7 +894,7 @@ export function renderTable(state, ctx = {}) {
         : 'is-hero';
 
   const cleanStatus =
-    state.phase !== 'lobby' && /in lobby|share code or link|joining/i.test(status || '')
+    state.phase !== 'lobby' && /in lobby|share code or link|joining|^Floor \d+ active\.$/i.test(status || '')
       ? `Floor ${state.floorNumber || 1} active.`
       : status;
 

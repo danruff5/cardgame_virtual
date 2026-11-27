@@ -6,8 +6,15 @@
   pointer-events: none;
 }
 
-#coach-root > * {
+#coach-root > .coach-help-btn,
+#coach-root > .coach-tip,
+#coach-root > .coach-menu {
   pointer-events: auto;
+}
+
+#coach-root > .coach-catcher,
+#coach-root > .coach-hole {
+  pointer-events: none;
 }
 
 .coach-help-btn {

@@ -608,8 +608,25 @@ button.clash-card-btn:hover:not(:disabled) {
 }
 
 .clash-card-btn.legal {
+  z-index: 15;
   cursor: pointer;
   animation: clash-legal-breathe 2.4s ease-in-out infinite;
+}
+
+.clash-player-hand.is-crowded {
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.clash-player-hand.is-crowded .clash-card-btn {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+#clash-layer .clash-player-hand.is-crowded .vcard.size-hand {
+  width: calc(var(--card-w) * 0.8);
+  height: calc(var(--card-h) * 0.8);
 }
 
 @media (prefers-reduced-motion: reduce) {

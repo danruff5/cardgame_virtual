@@ -571,9 +571,35 @@ function placeTip(rect, place, tipEl) {
     preferBottom();
   }
 
+  let finalTop = clamp(top, margin, maxTop);
+  let finalLeft = clamp(left, margin, maxLeft);
+
+  const handEl = typeof document !== 'undefined' ? document.querySelector('.clash-player-hand') : null;
+  const handRect = handEl?.getBoundingClientRect?.();
+  if (handRect && handRect.width > 0 && handRect.height > 0) {
+    const overlapsHand = (t, l) =>
+      l < handRect.right + 4 &&
+      l + tipW > handRect.left - 4 &&
+      t < handRect.bottom + 4 &&
+      t + tipH > handRect.top - 4;
+    if (overlapsHand(finalTop, finalLeft)) {
+      const candidates = [
+        { t: clamp(handRect.top - gap - tipH, margin, maxTop), l: finalLeft },
+        { t: finalTop, l: clamp(handRect.left - gap - tipW, margin, maxLeft) },
+        { t: finalTop, l: clamp(handRect.right + gap, margin, maxLeft) },
+        { t: clamp(handRect.bottom + gap, margin, maxTop), l: finalLeft },
+      ];
+      const clear = candidates.find((c) => !overlapsHand(c.t, c.l));
+      if (clear) {
+        finalTop = clear.t;
+        finalLeft = clear.l;
+      }
+    }
+  }
+
   return {
-    top: clamp(top, margin, maxTop),
-    left: clamp(left, margin, maxLeft),
+    top: finalTop,
+    left: finalLeft,
     maxWidth: tipW,
   };
 }

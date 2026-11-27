@@ -520,7 +520,7 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
         }
       </div>
       ${showHand ? '' : `<p class="muted clash-hand-private">${esc(hero?.name || 'Hero')}'s hand is private.</p>`}
-      <div class="clash-player-hand" data-fly="z:seat:${escAttr(mainId)}">
+      <div class="clash-player-hand ${fighterHand.length >= 7 ? 'is-crowded' : ''}" data-fly="z:seat:${escAttr(mainId)}">
         ${handCards || '<span class="muted">Empty hand</span>'}
       </div>
     </div>`;
@@ -540,6 +540,7 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
   const monsterChips = [
     `<span class="clash-chip">Cunning ${clash.cunning ?? '?'}</span>`,
     `<span class="clash-chip">Dmg ${clash.baseDmg ?? 1}</span>`,
+    clash.enraged ? '<span class="clash-chip is-warn">Enraged!</span>' : '',
     clash.monsterDazed ? '<span class="clash-chip is-warn">Dazed</span>' : '',
     clash.pendingKoboldSwings > 0
       ? `<span class="clash-chip is-warn">${clash.pendingKoboldSwings} free swings</span>`
@@ -568,6 +569,35 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
     fx.hitFlash ? 'clash-screen-hit' : '',
     closing ? `is-closing outcome-${closing}` : '',
   ].join(' ');
+
+  const beltOverflowHtml = (() => {
+    if (closing || state.phase !== 'clash' || state.pending?.kind !== 'belt-overflow') return '';
+    const pending = state.pending;
+    const mine = isDealer || pending.heroPlayerId === meId;
+    const targetHero = state.heroes?.[pending.heroPlayerId];
+    const opts = (pending.options || [])
+      .map(
+        (item, i) => `
+          <div class="vault-option">
+            <div class="vault-option-card">${renderGearChip(item.gearId || item.id, { size: 'hand' })}</div>
+            <div class="vault-option-info">
+              <strong>${esc(item.name)}</strong>
+              <button type="button" data-belt-discard="${i}" ${mine ? '' : 'disabled'}>Discard ${esc(item.name)}</button>
+            </div>
+          </div>`,
+      )
+      .join('');
+    return `
+      <div class="table-prompt-overlay is-clash-prompt" role="dialog" aria-label="Belt full">
+        <div class="table-prompt-card is-vault">
+          <div class="table-prompt-head">
+            <h3>Belt Full (2/2) — Discard 1</h3>
+            <span class="muted">${esc(targetHero?.name || 'Hero')}</span>
+          </div>
+          <div class="vault-options">${opts}</div>
+        </div>
+      </div>`;
+  })();
 
   return `
     <div class="${backdropClasses}" role="dialog" aria-modal="true" aria-label="Clash & Chain">
@@ -716,7 +746,7 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
           </div>
         </div>
       </div>
-    </div>`;
+    </div>${beltOverflowHtml}`;
 }
 
 function wireLogCardHovers(root = document) {
@@ -863,6 +893,14 @@ export function wireClashModal(room, session) {
   document.querySelectorAll('[data-clash-join]').forEach((btn) => {
     btn.addEventListener('click', () => {
       room.dispatch({ type: 'join-boss-clash', playerId: btn.getAttribute('data-clash-join') });
+    });
+  });
+  document.querySelectorAll('#clash-layer [data-belt-discard]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      room.dispatch({
+        type: 'resolve-pending',
+        discardIndex: Number(btn.getAttribute('data-belt-discard')),
+      });
     });
   });
   wireLogCardHovers();

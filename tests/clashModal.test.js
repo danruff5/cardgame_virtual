@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
 import { formatCombatLogLine, consumeClashFx, renderClashModal } from '../src/ui/clashModal.js';
 import { COACH_TOURS } from '../src/ui/coachmarks.js';
 
@@ -287,5 +288,55 @@ describe('clash modal items & twin knives UI', () => {
     const cardIdx = modalHtml.indexOf('data-clash-card="a1"');
     const cardBtn = modalHtml.slice(cardIdx - 80, cardIdx + 120);
     expect(cardBtn).toContain('disabled');
+  });
+
+  it('renders belt-overflow modal inside clash layer and Enraged! chip (virtual_17)', () => {
+    const s = sampleClashState();
+    s.clash.enraged = true;
+    s.pending = {
+      kind: 'belt-overflow',
+      heroPlayerId: 'p1',
+      options: [
+        { id: 'G-25', name: 'Wakey-Wakey Smelling Salts' },
+        { id: 'G-27', name: 'Strawberry Fizz Potion' },
+      ],
+    };
+
+    const ownerHtml = renderClashModal(s, false, 'p1', {});
+    expect(ownerHtml).toContain('Enraged!');
+    expect(ownerHtml).toContain('table-prompt-overlay is-clash-prompt');
+    expect(ownerHtml).toContain('aria-label="Belt full"');
+    expect(ownerHtml).toContain('table-prompt-card is-vault');
+    expect(ownerHtml).toContain('data-belt-discard="0"');
+    expect(ownerHtml).toContain('data-belt-discard="1"');
+    expect(ownerHtml).not.toContain('data-belt-discard="0" disabled');
+
+    const otherHtml = renderClashModal(s, false, 'p2', {});
+    expect(otherHtml).toContain('data-belt-discard="0" disabled');
+
+    const closingHtml = renderClashModal(s, true, 'dealer', { closing: 'victory' });
+    expect(closingHtml).not.toContain('is-clash-prompt');
+  });
+
+  it('adds is-crowded to clash-player-hand when hand has 7+ cards (virtual_18)', () => {
+    const s = sampleClashState();
+    const normalHtml = renderClashModal(s, false, 'p1', {});
+    expect(normalHtml).not.toContain('clash-player-hand is-crowded');
+
+    s.heroes.p1.hand = Array.from({ length: 7 }, (_, i) => ({
+      id: `c${i}`,
+      type: 'rank',
+      suit: 'brawn',
+      rank: (i % 6) + 1,
+      name: `brawn ${(i % 6) + 1}`,
+    }));
+    const crowdedHtml = renderClashModal(s, false, 'p1', {});
+    expect(crowdedHtml).toContain('clash-player-hand is-crowded');
+  });
+
+  it('coachmarks.css does not force pointer-events: auto via #coach-root > * (virtual_05)', () => {
+    const css = fs.readFileSync(new URL('../src/ui/coachmarks.css', import.meta.url), 'utf8');
+    expect(css).not.toMatch(/#coach-root\s*>\s*\*\s*\{[^}]*pointer-events\s*:\s*auto/);
+    expect(css).toMatch(/#coach-root\s*>\s*\.coach-catcher[\s\S]*pointer-events\s*:\s*none/);
   });
 });

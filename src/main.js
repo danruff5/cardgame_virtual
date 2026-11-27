@@ -37,6 +37,7 @@ const session = {
   lastActiveHeroId: null,
   carryingTargetId: null,
   lastPhase: null,
+  lastFloorNumber: null,
 };
 
 function coachContext() {
@@ -74,15 +75,18 @@ setCoachChangeHandler(() => {
 const room = new PeerRoom({
   onState: (state, meta) => {
     const prevPhase = session.lastPhase;
+    const prevFloor = session.lastFloorNumber;
     session.state = state;
     session.meta = meta;
     session.lastPhase = state?.phase || null;
+    session.lastFloorNumber = state?.floorNumber || null;
     if (
       state?.phase &&
       state.phase !== 'lobby' &&
       (prevPhase === 'lobby' ||
         prevPhase === null ||
-        /in lobby|share code or link|joining/i.test(session.status || ''))
+        prevFloor !== (state.floorNumber || 1) ||
+        /in lobby|share code or link|joining|^Floor \d+ active\.$/i.test(session.status || ''))
     ) {
       session.status = `Floor ${state.floorNumber || 1} active.`;
     }
@@ -471,7 +475,10 @@ function wireTable() {
     room.dispatch({ type: 'unlock-stairs', reason: 'Dealer unlocks stairs (Shiny Key / 5+ Zip or Brawn stunt).' });
   });
   document.getElementById('btn-end-floor')?.addEventListener('click', () => {
-    room.dispatch({ type: 'end-floor', message: 'Dealer ends Floor 1 — victory!' });
+    room.dispatch({
+      type: 'end-floor',
+      message: `Dealer ends Floor ${session.state?.floorNumber || 1} — victory!`,
+    });
   });
   document.getElementById('btn-draw-twist')?.addEventListener('click', () => {
     room.dispatch({ type: 'draw-twist', reason: 'Dealer draws Twist' });
