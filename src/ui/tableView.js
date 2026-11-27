@@ -1,5 +1,6 @@
-import { RULES, THEMES, BOSSES, SUITS, getGear } from '../data/index.js';
+import { RULES, THEMES, BOSSES, SUITS, getGear, getRoom } from '../data/index.js';
 import { adjacentOrthogonal, tilesConnect } from '../game/state.js';
+import { canPlayTwist } from '../game/authority.js';
 import { bossGather } from '../game/boss.js';
 import {
   renderActionCard,
@@ -95,21 +96,28 @@ function jammedDirs(state, tile, byKey) {
 function renderDealerBar(state) {
   const stairsOpen = Boolean(state.floor?.stairsUnlocked);
   const victory = state.phase === 'victory';
+  const defeat = state.phase === 'defeat';
+  const ended = victory || defeat;
   const decks = state.decks || {};
   const twists = decks.twistHand || [];
   const twistHtml = twists.length
     ? twists
-        .map((t) =>
-          t.hidden
-            ? `<div class="dealer-twist-chip is-hidden"><span>Twist</span></div>`
-            : `<div class="dealer-twist-chip">
+        .map((t) => {
+          if (t.hidden) return `<div class="dealer-twist-chip is-hidden"><span>Twist</span></div>`;
+          const check = canPlayTwist(state, t);
+          return `<div class="dealer-twist-chip">
                 <span class="dealer-twist-name">${esc(t.name)}</span>
-                <button type="button" class="dealer-twist-play" data-play-twist="${escAttr(t.id)}">Play</button>
+                <button type="button" class="dealer-twist-play" data-play-twist="${escAttr(t.id)}" ${check.ok ? '' : `disabled title="${escAttr(check.reason)}"`}>Play</button>
                 ${hoverTipHtml(t.name, t.effect || '', '')}
-              </div>`,
-        )
+              </div>`;
+        })
         .join('')
     : '<span class="muted dealer-empty-twist">No Twists held</span>';
+
+  const canThemeSwap =
+    state.themeId === 'T-01' &&
+    state.phase === 'exploring' &&
+    (state.map?.tiles || []).filter((t) => !t.faceUp).length >= 2;
 
   return `
     <div class="dealer-bar" data-coach="dealer-tools">
@@ -118,8 +126,9 @@ function renderDealerBar(state) {
         <div class="dealer-twist-tray">${twistHtml}</div>
       </div>
       <div class="dealer-bar-group dealer-controls">
-        <button type="button" id="btn-unlock-stairs" ${stairsOpen || victory ? 'disabled' : ''}>Unlock Stairs</button>
-        <button class="primary" type="button" id="btn-end-floor" ${victory ? 'disabled' : ''}>End Floor</button>
+        ${state.themeId === 'T-01' ? `<button type="button" id="btn-theme-swap" ${canThemeSwap ? '' : 'disabled'}>Maze Swap Rooms</button>` : ''}
+        <button type="button" id="btn-unlock-stairs" ${stairsOpen || ended ? 'disabled' : ''}>Unlock Stairs</button>
+        <button class="primary" type="button" id="btn-end-floor" ${ended ? 'disabled' : ''}>End Floor</button>
         <span class="dealer-decks" title="Remaining deck counts">
           Act ${decks.actionCount ?? '—'} · Loot ${decks.lootCount ?? '—'} · Evt ${decks.eventsCount ?? '—'} · Mon ${decks.monstersCount ?? '—'} · Merch ${decks.merchantsCount ?? '—'} · ${esc(state.layoutMode || 'random')}
         </span>
@@ -253,7 +262,7 @@ function renderMap(state, isDealer, meId, activeCarryId = null, carryingHero = n
               : 'Locked until Floor Boss is defeated (or Dealer unlocks)'
             : tile.lurkingMonster
               ? `Lurking: ${tile.lurkingMonster.name}`
-              : tile.rule || tile.name
+              : tile.rule || getRoom(tile.roomId)?.rule || tile.name
           : 'Face-down room';
 
       cells.push(`
@@ -324,6 +333,16 @@ function renderPendingOverlay(state, isDealer, meId) {
 
   if (pending.kind === 'event') {
     const ev = pending.event;
+    const boostCards = (targetHero?.hand || []).filter((c) => c.type !== 'cramp');
+    const boostSelect = boostCards.length
+      ? `<label class="muted" style="display:flex;gap:0.4rem;align-items:center;font-size:0.84rem;margin-bottom:0.6rem">
+          Optional Stunt boost (+2 matching suit / Wild auto-pass):
+          <select id="event-boost-card" ${mine ? '' : 'disabled'}>
+            <option value="">No discard</option>
+            ${boostCards.map((c) => `<option value="${escAttr(c.id)}">${esc(c.name || `${c.suit} ${c.rank}`)}</option>`).join('')}
+          </select>
+        </label>`
+      : '';
     return `
       <div class="table-prompt-overlay" role="dialog" aria-label="${escAttr(ev.title)}">
         <div class="table-prompt-card is-event">
@@ -335,11 +354,104 @@ function renderPendingOverlay(state, isDealer, meId) {
           <ul class="table-prompt-choices">
             ${(ev.choices || []).map((c) => `<li>${esc(c)}</li>`).join('')}
           </ul>
+          ${boostSelect}
           <div class="table-prompt-actions">
             <button type="button" class="primary" data-event-choice="a" ${mine ? '' : 'disabled'}>Choice A</button>
             <button type="button" data-event-choice="b" ${mine ? '' : 'disabled'}>Choice B</button>
           </div>
           ${!mine ? '<p class="muted table-prompt-wait">Waiting for the active Hero to choose…</p>' : ''}
+        </div>
+      </div>`;
+  }
+
+  if (pending.kind === 'merchant') {
+    const m = pending.merchant;
+    const belt = targetHero?.belt || [];
+    const hasGearOrBelt = Boolean(targetHero?.weapon || targetHero?.offhand || targetHero?.armor || belt.length);
+    const defaultSlot = targetHero?.offhand ? 'offhand' : targetHero?.armor ? 'armor' : targetHero?.weapon ? 'weapon' : '';
+    const gritSparkCount = (targetHero?.hand || []).filter(
+      (c) => c.type !== 'cramp' && (c.suit === 'grit' || c.suit === 'spark'),
+    ).length;
+    const dealsHtml =
+      m.id === 'M-01'
+        ? `
+          <button type="button" class="primary" data-merchant-deal="trade-gear" data-merchant-belt="${belt.length ? 0 : ''}" data-merchant-slot="${belt.length ? '' : escAttr(defaultSlot)}" ${mine && hasGearOrBelt ? '' : 'disabled'}>
+            Trade Gear (1 Gear/Belt → Draw 2 Keep 1)
+          </button>
+          <button type="button" data-merchant-deal="bundle-deal" ${mine && belt.length >= 2 ? '' : 'disabled'}>
+            Bundle Deal (2 Belt → 1 Tier 1 Loot)
+          </button>`
+        : `
+          <button type="button" class="primary" data-merchant-deal="brew-swap" data-merchant-reward="G-27" data-merchant-belt="${belt.length ? 0 : ''}" data-merchant-slot="${belt.length ? '' : escAttr(defaultSlot)}" ${mine && hasGearOrBelt ? '' : 'disabled'}>
+            Brew Swap → Strawberry Fizz Potion (+4 HP)
+          </button>
+          <button type="button" data-merchant-deal="brew-swap" data-merchant-reward="G-25" data-merchant-belt="${belt.length ? 0 : ''}" data-merchant-slot="${belt.length ? '' : escAttr(defaultSlot)}" ${mine && hasGearOrBelt ? '' : 'disabled'}>
+            Brew Swap → Smelling Salts (Revive)
+          </button>
+          <button type="button" data-merchant-deal="card-trade" ${mine && gritSparkCount >= 2 ? '' : 'disabled'}>
+            Card Trade (2 Grit/Spark → +3 HP)
+          </button>`;
+    return `
+      <div class="table-prompt-overlay" role="dialog" aria-label="${escAttr(m.name)}">
+        <div class="table-prompt-card is-merchant">
+          <div class="table-prompt-head">
+            <h3>${esc(m.name)}</h3>
+            <span class="muted">${esc(targetHero?.name || 'Hero')} · 1 Action</span>
+          </div>
+          <p class="table-prompt-copy">${esc(m.greeting)}</p>
+          <ul class="table-prompt-choices">
+            ${(m.deals || []).map((d) => `<li>${esc(d)}</li>`).join('')}
+          </ul>
+          <div class="table-prompt-actions">
+            ${dealsHtml}
+            <button type="button" id="btn-merchant-cancel" ${mine ? '' : 'disabled'}>Leave</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  if (pending.kind === 'story') {
+    const st = pending.story;
+    return `
+      <div class="table-prompt-overlay" role="dialog" aria-label="${escAttr(st.name)}">
+        <div class="table-prompt-card is-event">
+          <div class="table-prompt-head">
+            <h3>${esc(st.name)}</h3>
+            <span class="muted">${esc(targetHero?.name || 'Hero')}</span>
+          </div>
+          <p class="table-prompt-copy">${esc(st.scene)}</p>
+          <ul class="table-prompt-choices">
+            ${(st.choices || []).map((c) => `<li>${esc(c)}</li>`).join('')}
+          </ul>
+          <div class="table-prompt-actions">
+            <button type="button" class="primary" data-story-choice="a" ${mine ? '' : 'disabled'}>${st.part === 2 ? 'Continue' : 'Choice A'}</button>
+            ${st.part === 1 ? `<button type="button" data-story-choice="b" ${mine ? '' : 'disabled'}>Choice B</button>` : ''}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  if (pending.kind === 'belt-overflow') {
+    const opts = (pending.options || [])
+      .map(
+        (item, i) => `
+          <div class="vault-option">
+            <div class="vault-option-card">${renderGearChip(item.gearId || item.id, { size: 'hand' })}</div>
+            <div class="vault-option-info">
+              <strong>${esc(item.name)}</strong>
+              <button type="button" data-belt-discard="${i}" ${mine ? '' : 'disabled'}>Discard ${esc(item.name)}</button>
+            </div>
+          </div>`,
+      )
+      .join('');
+    return `
+      <div class="table-prompt-overlay" role="dialog" aria-label="Belt full">
+        <div class="table-prompt-card is-vault">
+          <div class="table-prompt-head">
+            <h3>Belt Full (2/2) — Discard 1</h3>
+            <span class="muted">${esc(targetHero?.name || 'Hero')}</span>
+          </div>
+          <div class="vault-options">${opts}</div>
         </div>
       </div>`;
   }
@@ -386,6 +498,11 @@ function renderRoomActions(state, isDealer, meId, activeCarryId = null, carrying
       if (tile.merchant) {
         buttons.push(
           `<button type="button" id="btn-merchant" title="${escAttr(tile.merchant.greeting || '')}">Trade with ${esc(tile.merchant.name)}</button>`,
+        );
+      }
+      if (tile.story && !tile.storyResolved) {
+        buttons.push(
+          `<button type="button" class="primary" id="btn-story">Story: ${esc(tile.story.name)}</button>`,
         );
       }
       if (tile.kind === 'hallway' && !tile.hallwayEchoUsed) {
@@ -516,7 +633,7 @@ function renderFocusedHero(state, focusedId, activeId, isDealer, meId) {
   const hero = state.heroes?.[focusedId];
   if (!hero) return '';
   const player = state.players?.find((p) => p.id === focusedId);
-  const isTurn = focusedId === activeId && state.phase !== 'victory';
+  const isTurn = focusedId === activeId && state.phase !== 'victory' && state.phase !== 'defeat';
   const isMine = focusedId === meId;
   const showHand = isMine || isDealer;
   const hand = hero.hand || [];
@@ -726,6 +843,7 @@ export function renderTable(state, ctx = {}) {
   const gather = bossGather(state);
   const bossWaiting = Boolean(gather.waiting);
   const isVictory = state.phase === 'victory';
+  const isDefeat = state.phase === 'defeat';
   const focusedId = resolveFocusedHeroId(state, { isDealer, meId, inspectedHeroId });
 
   const carryingHero =
@@ -750,6 +868,7 @@ export function renderTable(state, ctx = {}) {
     isDealer ? 'has-dealer-bar' : '',
     bossWaiting ? 'has-boss-bar' : '',
     isVictory ? 'has-victory-bar' : '',
+    isDefeat ? 'has-defeat-bar' : '',
     activeCarryId ? 'has-carry-bar' : '',
   ]
     .filter(Boolean)
@@ -757,21 +876,36 @@ export function renderTable(state, ctx = {}) {
 
   const turnLabel = isVictory
     ? 'Floor Complete'
-    : state.phase === 'clash'
-      ? 'In Clash!'
-      : !isDealer && meId === activeId
-        ? 'Your turn'
-        : `${activePlayer?.name || activeHero?.name || 'Hero'}'s turn`;
+    : isDefeat
+      ? 'Party Wiped'
+      : state.phase === 'clash'
+        ? 'In Clash!'
+        : !isDealer && meId === activeId
+          ? 'Your turn'
+          : `${activePlayer?.name || activeHero?.name || 'Hero'}'s turn`;
 
-  const turnClass = isVictory ? 'is-victory' : state.phase === 'clash' ? 'is-clash' : 'is-hero';
+  const turnClass = isVictory
+    ? 'is-victory'
+    : isDefeat
+      ? 'is-defeat'
+      : state.phase === 'clash'
+        ? 'is-clash'
+        : 'is-hero';
+
+  const cleanStatus =
+    state.phase !== 'lobby' && /in lobby|share code or link|joining/i.test(status || '')
+      ? `Floor ${state.floorNumber || 1} active.`
+      : status;
 
   const statusHtml = error
     ? `<p class="table-error-chip" role="alert">${esc(error)}</p>`
     : isVictory
       ? `<p class="table-status-note is-good">Spiral Slide reached — conscious Heroes healed +3 HP.</p>`
-      : state.floor?.stairsUnlocked
-        ? `<p class="table-status-note is-good">Stairs unlocked — step onto Stairway Down to finish.</p>`
-        : `<p class="table-status-note muted">${esc(status)}</p>`;
+      : isDefeat
+        ? `<p class="table-status-note is-warn">All Heroes are DOWNED — Floor lost.</p>`
+        : state.floor?.stairsUnlocked
+          ? `<p class="table-status-note is-good">Stairs unlocked — step onto Stairway Down to finish.</p>`
+          : `<p class="table-status-note muted">${esc(cleanStatus)}</p>`;
 
   const logHtml = (state.log || [])
     .map((l) => `<div class="table-log-line">${formatCombatLogLine(l)}</div>`)
@@ -787,7 +921,7 @@ export function renderTable(state, ctx = {}) {
           <strong>${esc(activeTile.name)}</strong>
           ${jammedHere ? '<span class="table-chip is-warn">Door Jammed</span>' : ''}
         </div>
-        <p class="muted">${esc(activeTile.lurkingMonster ? `Lurking: ${activeTile.lurkingMonster.name}` : activeTile.merchant ? `${activeTile.merchant.name}: ${activeTile.merchant.deals?.[0] || ''}` : activeTile.rule || '')}</p>
+        <p class="muted">${esc(activeTile.lurkingMonster ? `Lurking: ${activeTile.lurkingMonster.name}` : activeTile.merchant ? `${activeTile.merchant.name}: ${activeTile.merchant.deals?.[0] || ''}` : activeTile.rule || getRoom(activeTile.roomId)?.rule || '')}</p>
       </div>`
     : '';
 
@@ -807,22 +941,28 @@ export function renderTable(state, ctx = {}) {
 
   const topBannerHtml = isVictory
     ? `<div class="table-victory-bar">
-        <strong>Floor 1 complete!</strong>
+        <strong>Floor ${state.floorNumber || 1} complete!</strong>
         <span class="muted">The Spiral Slide is open — conscious Heroes healed +3 HP.</span>
+        <button type="button" class="primary" id="btn-descend-floor">Descend to Floor ${(state.floorNumber || 1) + 1}</button>
       </div>`
-    : `${renderBossGatherBar(state, isDealer, meId)}${carryBannerHtml}`;
+    : isDefeat
+      ? `<div class="table-victory-bar is-defeat" role="status">
+          <strong>Defeat — Party Wiped!</strong>
+          <span class="muted">All Heroes are DOWNED on Floor ${state.floorNumber || 1}.</span>
+        </div>`
+      : `${renderBossGatherBar(state, isDealer, meId)}${carryBannerHtml}`;
 
   return `
     <div class="${shellClasses}">
       <header class="table-header">
         <div class="table-title">
           <p class="table-kicker">Cozy Basement Crawl · Room ${esc(roomCode)} · ${esc(role)}</p>
-          <h2>Floor 1 <span class="table-sub">· ${esc(theme?.name || 'Theme')} · Boss: ${esc(boss?.name || '?')}</span></h2>
+          <h2>Floor ${state.floorNumber || 1} <span class="table-sub">· ${esc(theme?.name || 'Theme')} · Boss: ${esc(boss?.name || '?')}</span></h2>
         </div>
         <div class="table-status">${statusHtml}</div>
         <div class="table-pills">
           <span class="pill ${state.floor?.stairsUnlocked ? 'is-good' : ''}">Stairs: <strong>${state.floor?.stairsUnlocked ? 'UNLOCKED' : 'locked'}</strong></span>
-          ${!isVictory ? `<span class="pill" data-coach="actions-left">Actions: <strong>${state.explorationActionsLeft}</strong></span>` : ''}
+          ${!isVictory && !isDefeat ? `<span class="pill" data-coach="actions-left">Actions: <strong>${state.explorationActionsLeft}</strong></span>` : ''}
           <span class="table-turn-chip ${turnClass}">${esc(turnLabel)}</span>
         </div>
       </header>

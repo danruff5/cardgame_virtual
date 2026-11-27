@@ -11,6 +11,7 @@ import {
   BOSSES,
   EVENTS,
   MERCHANTS,
+  STORIES,
 } from '../data/index.js';
 import { shuffle, uid } from './util.js';
 import { buildFixedSnakeMap, buildRandomFloorMap, tilesConnect } from './mapLayout.js';
@@ -25,7 +26,8 @@ export function createEmptyState(roomCode, hostPlayerId, hostName) {
   return {
     version: 1,
     roomCode,
-    phase: 'lobby', // lobby | exploring | clash | victory
+    phase: 'lobby', // lobby | exploring | clash | victory | defeat
+    floorNumber: 1,
     log: [`Room ${roomCode} opened. Waiting for heroes…`],
     themeId: null,
     bossId: null,
@@ -65,10 +67,12 @@ export function createEmptyState(roomCode, hostPlayerId, hostName) {
       lootDiscard: [],
       events: [],
       merchants: [],
+      stories: [],
     },
     heroes: {}, // playerId -> hero runtime
     clash: null,
-    pending: null, // vault / event choice modal
+    storyStack: [], // Part II callback entries tucked for Floor 2+
+    pending: null, // vault / event / merchant / story / belt-overflow modal
     layoutMode: 'random', // random | fixed
   };
 }
@@ -150,6 +154,7 @@ export function prepareFloorDecks() {
     lootDiscard: [],
     events: shuffle(EVENTS.map((e) => ({ ...e }))),
     merchants: shuffle(MERCHANTS.map((m) => ({ ...m }))),
+    stories: shuffle(STORIES.filter((s) => s.part === 1).map((s) => ({ ...s }))),
   };
 }
 
@@ -159,6 +164,25 @@ export function pickRandomTheme() {
 
 export function pickRandomBoss() {
   return BOSSES[Math.floor(Math.random() * BOSSES.length)].id;
+}
+
+function slimActionCard(c) {
+  if (!c) return c;
+  const out = { id: c.id, type: c.type };
+  if (c.kind !== undefined) out.kind = c.kind;
+  if (c.suit !== undefined) out.suit = c.suit;
+  if (c.rank !== undefined) out.rank = c.rank;
+  if (c.name !== undefined) out.name = c.name;
+  if (c.hidden !== undefined) out.hidden = c.hidden;
+  return out;
+}
+
+function slimGearItem(g) {
+  if (!g) return g;
+  const out = { ...g };
+  delete out.rule;
+  delete out.flavor;
+  return out;
 }
 
 /**
@@ -200,16 +224,36 @@ export function publicStateFor(state, viewerPlayerId) {
       lootCount: copy.decks.loot?.length ?? 0,
       eventsCount: copy.decks.events?.length ?? 0,
       merchantsCount: copy.decks.merchants?.length ?? 0,
+      storyStackCount: copy.storyStack?.length ?? 0,
       twistHand: copy.decks.twistHand.map((t) => ({ id: t.id, hidden: true })),
     };
+  }
+  delete copy.storyStack;
+  copy.log = (copy.log || []).slice(0, 20);
+  if (copy.map?.tiles) {
+    for (const tile of copy.map.tiles) {
+      delete tile.rule;
+      delete tile.flavor;
+    }
+  }
+  if (copy.clash) {
+    copy.clash.pileCount = copy.clash.pile?.length ?? 0;
+    copy.clash.pile = (copy.clash.pile || []).slice(-6).map(slimActionCard);
+    if (copy.clash.topCard) copy.clash.topCard = slimActionCard(copy.clash.topCard);
   }
   // Co-op clash: fighters on the same pile play open-handed with each other.
   const fighters = copy.clash?.fighters || [];
   const viewerFights = fighters.includes(viewerPlayerId);
   for (const [pid, hero] of Object.entries(copy.heroes || {})) {
-    if (pid === viewerPlayerId) continue;
-    if (viewerFights && fighters.includes(pid)) continue;
-    hero.hand = hero.hand.map((c) => ({ id: c.id, hidden: true, type: c.type }));
+    if (hero.weapon) hero.weapon = slimGearItem(hero.weapon);
+    if (hero.offhand) hero.offhand = slimGearItem(hero.offhand);
+    if (hero.armor) hero.armor = slimGearItem(hero.armor);
+    if (hero.belt) hero.belt = hero.belt.map(slimGearItem);
+    if (pid === viewerPlayerId || (viewerFights && fighters.includes(pid))) {
+      hero.hand = hero.hand.map(slimActionCard);
+    } else {
+      hero.hand = hero.hand.map((c) => ({ id: c.id, hidden: true, type: c.type }));
+    }
   }
   if (copy.clash?.monsterHand) {
     copy.clash.monsterHand = copy.clash.monsterHand.map((c) => ({ id: c.id, hidden: true }));

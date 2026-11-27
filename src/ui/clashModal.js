@@ -162,6 +162,7 @@ export function clashPlayOptionsFor(hero) {
 }
 
 function cardIsLegal(c, clash, playOpts, hasCookie) {
+  if (clash?.heroDazed) return false;
   if (clash?.twinRank != null) {
     return Boolean(c && !isCramp(c) && !isSpecial(c) && !isWild(c) && Number(c.rank) === clash.twinRank);
   }
@@ -436,7 +437,13 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
       ${fx.error ? `<p class="clash-error" role="alert">${esc(fx.error)}</p>` : ''}
       ${
         canPlay
-          ? twinPending
+          ? clash.heroDazed
+            ? `
+        <button type="button" class="primary" id="btn-clash-dazed-skip">Dazed — Skip Turn</button>
+        ${healButtonsHtml}
+        <p class="muted clash-tray-note">You are Dazed and miss this combat turn.</p>
+      `
+            : twinPending
             ? `
         <button type="button" class="primary" id="btn-clash-end-twin">Done with Twin Knives (skip 2nd Rank ${clash.twinRank})</button>
         ${healButtonsHtml}
@@ -618,7 +625,7 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
                   <div class="clash-active-pill" style="--active:${activeColor}">
                     <span class="muted">Active</span>
                     <strong>${esc(activeMeta?.label || clash.activeSuit || '—')} ${clash.activeRank ?? ''}</strong>
-                    <span class="muted">· pile ${clash.pile?.length ?? 0}</span>
+                    <span class="muted">· pile ${clash.pileCount ?? clash.pile?.length ?? 0}</span>
                   </div>
                   ${
                     fx.turnChanged && !closing
@@ -805,6 +812,9 @@ export function wireClashModal(room, session) {
   });
   document.getElementById('btn-clash-end-twin')?.addEventListener('click', () => {
     room.dispatch({ type: 'clash-end-twin' });
+  });
+  document.getElementById('btn-clash-dazed-skip')?.addEventListener('click', () => {
+    room.dispatch({ type: 'clash-skip-dazed' });
   });
   document.querySelectorAll('[data-clash-card]').forEach((btn) => {
     btn.addEventListener('click', () => {

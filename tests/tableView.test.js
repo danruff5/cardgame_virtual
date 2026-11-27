@@ -381,3 +381,36 @@ describe('right-side hero abilities & belt items panel and Pip half-move UI', ()
     expect(html).not.toContain(`data-move-x="${hiddenNeighbor.x}" data-move-y="${hiddenNeighbor.y}"`);
   });
 });
+
+describe('defeat banner, disabled combat twist, and stale lobby status (virtual_04, virtual_12, virtual_13)', () => {
+  it('renders Defeat banner when phase is defeat and sanitizes stale lobby status', () => {
+    const { state } = twoHeroState();
+    state.phase = 'defeat';
+    const html = renderTable(publicStateFor(state, 'h1'), {
+      isDealer: false,
+      meId: 'h1',
+      roomCode: 'ROOM',
+      role: 'hero',
+      status: 'In lobby for room ROOM.',
+      error: '',
+    });
+    expect(html).toContain('Defeat — Party Wiped!');
+    expect(html).not.toContain('In lobby for room ROOM.');
+  });
+
+  it('disables Boss Espresso Shot! in Dealer Bar outside clash', () => {
+    const { state, dealerId } = twoHeroState();
+    state.decks.twistHand = [
+      { id: 'TW-08', name: 'Boss Espresso Shot!', effect: 'During combat: +2 HP or +2 cards.' },
+    ];
+    const html = renderTable(publicStateFor(state, dealerId), {
+      isDealer: true,
+      meId: dealerId,
+      roomCode: 'ROOM',
+      role: 'dealer',
+      status: 'Floor 1 active.',
+      error: '',
+    });
+    expect(html).toContain('data-play-twist="TW-08" disabled');
+  });
+});

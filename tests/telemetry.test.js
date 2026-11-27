@@ -83,4 +83,42 @@ describe('telemetry observer', () => {
     // Observation-only: s1.phase was not mutated
     expect(s1.phase).toBe('exploring');
   });
+
+  it('tracks multi-floor progression (stays active after Floor 1 in 2F run, wins on Floor 2)', () => {
+    const tracker = createTelemetryTracker({
+      roomCode: 'FLR2',
+      source: 'headless-sim',
+      targetFloors: 2,
+      sendFn: () => {},
+    });
+    const { state: s0, dealerId } = startExploringFloor({ heroId: 'H-01', layoutMode: 'fixed' });
+    tracker.onState(null, s0, { type: 'start-floor' });
+
+    // Finish Floor 1
+    let r = applyAction(s0, { type: 'end-floor' }, dealerId);
+    expect(r.ok).toBe(true);
+    tracker.onState(s0, r.state, { type: 'end-floor' });
+    expect(tracker.snapshot().status).toBe('active');
+    expect(tracker.snapshot().floorsCleared).toBe(1);
+    expect(tracker.snapshot().floorHistory).toHaveLength(1);
+
+    // Descend to Floor 2
+    const prevVictory = r.state;
+    r = applyAction(prevVictory, { type: 'descend-floor' }, dealerId);
+    expect(r.ok).toBe(true);
+    tracker.onState(prevVictory, r.state, { type: 'descend-floor' });
+    expect(tracker.snapshot().currentFloor).toBe(2);
+    expect(tracker.snapshot().status).toBe('active');
+
+    // Finish Floor 2 -> now overall status is won!
+    const f2Explore = r.state;
+    r = applyAction(f2Explore, { type: 'end-floor' }, dealerId);
+    expect(r.ok).toBe(true);
+    tracker.onState(f2Explore, r.state, { type: 'end-floor' });
+    const snap = tracker.snapshot();
+    expect(snap.status).toBe('won');
+    expect(snap.floorsCleared).toBe(2);
+    expect(snap.maxFloorReached).toBe(2);
+    expect(snap.floorHistory).toHaveLength(2);
+  });
 });

@@ -125,6 +125,7 @@ export function clashOutcome(prevState, nextState) {
   const clash = prevState?.clash;
   if (!clash) return 'ended';
   if (!nextState || nextState.phase === 'victory' || nextState.phase === 'lobby') return 'ended';
+  if (nextState.phase === 'defeat') return 'downed';
   const prevTile = prevState.map?.tiles?.find((t) => t.key === clash.roomKey);
   const nextTile = nextState.map?.tiles?.find((t) => t.key === clash.roomKey);
   if (nextTile?.cleared && !prevTile?.cleared) return 'victory';

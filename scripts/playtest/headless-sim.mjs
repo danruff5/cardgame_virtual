@@ -83,7 +83,7 @@ function pickBestCard(hero, clash) {
   return scored[0].c;
 }
 
-function runSingleSim(index, partySize) {
+function runSingleSim(index, partySize, targetFloors = 1) {
   const roomCode = `SIM${String(index + 1).padStart(3, '0')}`;
   const dealerId = 'dealer-sim';
   const theme = THEMES[index % THEMES.length];
@@ -92,8 +92,9 @@ function runSingleSim(index, partySize) {
   const tracker = createTelemetryTracker({
     roomCode,
     source: 'headless-sim',
-    batchId: 'headless-100',
-    testerLabel: `sim-${partySize}p`,
+    batchId: `headless-r2-${targetFloors}f`,
+    testerLabel: `sim-${partySize}p-${targetFloors}f`,
+    targetFloors,
     sendFn: () => {},
   });
 
@@ -131,22 +132,40 @@ function runSingleSim(index, partySize) {
   let steps = 0;
   let bossWaitTurns = 0;
   let anomaly = null;
+  const maxSteps = 450 * targetFloors;
 
-  while (steps < 450) {
+  while (steps < maxSteps) {
     steps += 1;
-    if (state.phase === 'victory') break;
+    if (state.phase === 'defeat') break;
+    if (state.phase === 'victory') {
+      if ((state.floorNumber || 1) < targetFloors) {
+        const dr = dispatch({ type: 'descend-floor' }, dealerId);
+        if (!dr.ok) {
+          anomaly = `descend-fail: ${dr.error}`;
+          break;
+        }
+        bossWaitTurns = 0;
+        continue;
+      }
+      break;
+    }
     const heroesList = Object.values(state.heroes);
     if (heroesList.length && heroesList.every((h) => h.downed)) break;
 
     if (state.pending) {
-      const r = dispatch(
-        state.pending.kind === 'vault'
-          ? { type: 'resolve-pending', keepIndex: 0 }
-          : { type: 'resolve-pending', choice: index % 2 === 0 ? 'a' : 'b' },
-        dealerId,
-      );
+      let pendingAction;
+      if (state.pending.kind === 'vault') {
+        pendingAction = { type: 'resolve-pending', keepIndex: 0 };
+      } else if (state.pending.kind === 'belt-overflow') {
+        pendingAction = { type: 'resolve-pending', discardIndex: 2 };
+      } else if (state.pending.kind === 'merchant') {
+        pendingAction = { type: 'resolve-pending', deal: 'skip' };
+      } else {
+        pendingAction = { type: 'resolve-pending', choice: index % 2 === 0 ? 'a' : 'b' };
+      }
+      const r = dispatch(pendingAction, dealerId);
       if (!r.ok) {
-        anomaly = `pending-fail: ${r.error}`;
+        anomaly = `pending-fail (${state.pending.kind}): ${r.error}`;
         break;
       }
       continue;
@@ -332,25 +351,27 @@ function runSingleSim(index, partySize) {
   }
 
   const snap = tracker.snapshot();
-  if (steps >= 450 && snap.status === 'active') {
+  if (steps >= maxSteps && snap.status === 'active') {
     snap.status = 'abandoned';
-    anomaly = anomaly || 'max-steps-450-reached';
+    anomaly = anomaly || `max-steps-${maxSteps}-reached`;
   }
   return { record: snap, anomaly };
 }
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
-  const count = opts.count || 100;
+  const count = opts.count || 120;
   const partyCycle = [1, 2, 3, 4];
+  const floorCycle = [1, 2, 3];
   const records = [];
   const anomalies = [];
 
   for (let i = 0; i < count; i += 1) {
     const partySize = partyCycle[i % partyCycle.length];
-    const { record, anomaly } = runSingleSim(i, partySize);
+    const targetFloors = floorCycle[Math.floor(i / partyCycle.length) % floorCycle.length];
+    const { record, anomaly } = runSingleSim(i, partySize, targetFloors);
     records.push(record);
-    if (anomaly) anomalies.push({ gameId: record.gameId, partySize, anomaly });
+    if (anomaly) anomalies.push({ gameId: record.gameId, partySize, targetFloors, anomaly });
 
     if (opts.telemetry) {
       await fetch(opts.telemetry, {
@@ -367,8 +388,24 @@ async function main() {
     lost: records.filter((r) => r.status === 'lost').length,
     abandoned: records.filter((r) => r.status === 'abandoned').length,
     byPartySize: {},
+    byTargetFloors: {},
     anomalies,
   };
+  for (const tf of floorCycle) {
+    const sub = records.filter((r) => r.targetFloors === tf);
+    const w = sub.filter((r) => r.status === 'won').length;
+    const l = sub.filter((r) => r.status === 'lost').length;
+    summary.byTargetFloors[`${tf}F`] = {
+      played: sub.length,
+      won: w,
+      lost: l,
+      winRatePct: sub.length ? Number(((w / sub.length) * 100).toFixed(1)) : 0,
+      avgFloorsCleared: Number((sub.reduce((s, r) => s + (r.floorsCleared || 0), 0) / (sub.length || 1)).toFixed(2)),
+      avgTurns: Number((sub.reduce((s, r) => s + r.explorationTurns, 0) / (sub.length || 1)).toFixed(2)),
+      avgDesperation: Number((sub.reduce((s, r) => s + r.desperationFlips, 0) / (sub.length || 1)).toFixed(2)),
+      avgDowned: Number((sub.reduce((s, r) => s + r.heroDownedCount, 0) / (sub.length || 1)).toFixed(2)),
+    };
+  }
   for (const p of partyCycle) {
     const sub = records.filter((r) => r.heroCount === p);
     const w = sub.filter((r) => r.status === 'won').length;

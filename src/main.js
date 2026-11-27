@@ -36,6 +36,7 @@ const session = {
   inspectedHeroId: null,
   lastActiveHeroId: null,
   carryingTargetId: null,
+  lastPhase: null,
 };
 
 function coachContext() {
@@ -72,8 +73,19 @@ setCoachChangeHandler(() => {
 
 const room = new PeerRoom({
   onState: (state, meta) => {
+    const prevPhase = session.lastPhase;
     session.state = state;
     session.meta = meta;
+    session.lastPhase = state?.phase || null;
+    if (
+      state?.phase &&
+      state.phase !== 'lobby' &&
+      (prevPhase === 'lobby' ||
+        prevPhase === null ||
+        /in lobby|share code or link|joining/i.test(session.status || ''))
+    ) {
+      session.status = `Floor ${state.floorNumber || 1} active.`;
+    }
     session.error = '';
     session.carryingTargetId = null;
     render();
@@ -464,6 +476,12 @@ function wireTable() {
   document.getElementById('btn-draw-twist')?.addEventListener('click', () => {
     room.dispatch({ type: 'draw-twist', reason: 'Dealer draws Twist' });
   });
+  document.getElementById('btn-theme-swap')?.addEventListener('click', () => {
+    room.dispatch({ type: 'theme-swap-rooms' });
+  });
+  document.getElementById('btn-descend-floor')?.addEventListener('click', () => {
+    room.dispatch({ type: 'descend-floor' });
+  });
   document.querySelectorAll('[data-play-twist]').forEach((btn) => {
     btn.addEventListener('click', () => {
       room.dispatch({ type: 'play-twist', twistId: btn.getAttribute('data-play-twist') });
@@ -479,9 +497,43 @@ function wireTable() {
   });
   document.querySelectorAll('[data-event-choice]').forEach((btn) => {
     btn.addEventListener('click', () => {
+      const discardCardId = document.getElementById('event-boost-card')?.value || null;
       room.dispatch({
         type: 'resolve-pending',
         choice: btn.getAttribute('data-event-choice'),
+        discardCardId,
+      });
+    });
+  });
+  document.querySelectorAll('[data-merchant-deal]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const deal = btn.getAttribute('data-merchant-deal');
+      const beltRaw = btn.getAttribute('data-merchant-belt');
+      const slot = btn.getAttribute('data-merchant-slot');
+      const rewardId = btn.getAttribute('data-merchant-reward');
+      const action = { type: 'resolve-pending', deal };
+      if (beltRaw !== null && beltRaw !== '') action.beltIndex = Number(beltRaw);
+      if (slot) action.slot = slot;
+      if (rewardId) action.rewardId = rewardId;
+      room.dispatch(action);
+    });
+  });
+  document.getElementById('btn-merchant-cancel')?.addEventListener('click', () => {
+    room.dispatch({ type: 'resolve-pending', cancel: true });
+  });
+  document.querySelectorAll('[data-story-choice]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      room.dispatch({
+        type: 'resolve-pending',
+        choice: btn.getAttribute('data-story-choice'),
+      });
+    });
+  });
+  document.querySelectorAll('[data-belt-discard]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      room.dispatch({
+        type: 'resolve-pending',
+        discardIndex: Number(btn.getAttribute('data-belt-discard')),
       });
     });
   });
@@ -513,13 +565,10 @@ function wireTable() {
     room.dispatch(withPlayer({ type: 'interact', subtype: 'hallway' }));
   });
   document.getElementById('btn-merchant')?.addEventListener('click', () => {
-    const hero = session.state.heroes[activeId];
-    if (!hero?.belt?.length) {
-      session.error = 'Need a belt consumable to trade (digital proxy for merchant deal).';
-      render();
-      return;
-    }
-    room.dispatch(withPlayer({ type: 'interact', subtype: 'merchant', beltIndex: 0 }));
+    room.dispatch(withPlayer({ type: 'interact', subtype: 'merchant' }));
+  });
+  document.getElementById('btn-story')?.addEventListener('click', () => {
+    room.dispatch(withPlayer({ type: 'interact', subtype: 'story' }));
   });
   document.querySelectorAll('[data-use-belt]').forEach((btn) => {
     btn.addEventListener('click', () => {

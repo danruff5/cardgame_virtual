@@ -612,8 +612,10 @@ button.clash-card-btn:hover:not(:disabled) {
   animation: clash-legal-breathe 2.4s ease-in-out infinite;
 }
 
-.clash-card-btn.legal:hover {
-  animation: none;
+@media (prefers-reduced-motion: reduce) {
+  .clash-card-btn.legal {
+    animation: none;
+  }
 }
 
 .clash-card-btn.legal .vcard {
@@ -1150,10 +1152,10 @@ body.clash-open .coach-help-btn {
 @keyframes clash-legal-breathe {
   0%,
   100% {
-    transform: translateY(-2px);
+    filter: brightness(1);
   }
   50% {
-    transform: translateY(-6px);
+    filter: brightness(1.08) drop-shadow(0 0 8px rgba(143, 191, 154, 0.45));
   }
 }
 

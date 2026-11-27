@@ -30,6 +30,7 @@ export function buildAppUrl({
   batchId = null,
   source = 'ui-playtest',
   tester = null,
+  targetFloors = null,
   monitor = false,
 } = {}) {
   const url = new URL(baseUrl);
@@ -41,6 +42,7 @@ export function buildAppUrl({
   if (batchId) url.searchParams.set('batch', batchId);
   if (source) url.searchParams.set('source', source);
   if (tester) url.searchParams.set('tester', tester);
+  if (targetFloors) url.searchParams.set('targetFloors', String(targetFloors));
   if (monitor) url.searchParams.set('monitor', '1');
   return url.toString();
 }

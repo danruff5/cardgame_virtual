@@ -106,7 +106,7 @@ async function extractSnapshot(entry) {
     const roomActions = [];
     document
       .querySelectorAll(
-        '#btn-vault, #btn-shrine, #btn-hallway, #btn-merchant, #btn-pry-jam, #btn-end-turn, #btn-boss-start, [data-revive], [data-carry], [data-use-belt], [data-clash-join]',
+        '#btn-vault, #btn-shrine, #btn-hallway, #btn-merchant, #btn-pry-jam, #btn-end-turn, #btn-boss-start, #btn-descend-stairs, #btn-descend-floor, #btn-theme-swap, [data-revive], [data-carry], [data-use-belt], [data-clash-join]',
       )
       .forEach((btn) => {
         if (btn.disabled) return;
@@ -127,11 +127,17 @@ async function extractSnapshot(entry) {
     const promptEl = document.querySelector('.table-prompt-card');
     if (promptEl) {
       const choices = [];
-      promptEl.querySelectorAll('[data-keep-loot], [data-event-choice]').forEach((b) => {
+      promptEl.querySelectorAll('[data-keep-loot], [data-event-choice], [data-belt-discard], [data-story-choice], [data-merchant-deal]').forEach((b) => {
         if (b.disabled) return;
         const selector = b.hasAttribute('data-keep-loot')
           ? `[data-keep-loot="${b.getAttribute('data-keep-loot')}"]`
-          : `[data-event-choice="${b.getAttribute('data-event-choice')}"]`;
+          : b.hasAttribute('data-belt-discard')
+            ? `[data-belt-discard="${b.getAttribute('data-belt-discard')}"]`
+            : b.hasAttribute('data-story-choice')
+              ? `[data-story-choice="${b.getAttribute('data-story-choice')}"]`
+              : b.hasAttribute('data-merchant-deal')
+                ? `[data-merchant-deal="${b.getAttribute('data-merchant-deal')}"]`
+                : `[data-event-choice="${b.getAttribute('data-event-choice')}"]`;
         choices.push({ selector, label: text(b) });
       });
       pendingModal = {
@@ -163,7 +169,7 @@ async function extractSnapshot(entry) {
       const buttons = [];
       document
         .querySelectorAll(
-          '#btn-clash-desperation, #btn-clash-cramp, #btn-clash-monster, #btn-clash-end-twin, #btn-clash-win, #btn-clash-flee, [data-clash-belt], [data-clash-join]',
+          '#btn-clash-desperation, #btn-clash-cramp, #btn-clash-monster, #btn-clash-end-twin, #btn-clash-dazed-skip, #btn-clash-win, #btn-clash-flee, [data-clash-belt], [data-clash-join]',
         )
         .forEach((b) => {
           let selector = b.id ? `#${b.id}` : '';
@@ -225,6 +231,8 @@ async function extractSnapshot(entry) {
     return {
       url: window.location.href,
       phase: st?.phase || (document.querySelector('#btn-host') ? 'lobby-shell' : 'unknown'),
+      floorNumber: st?.floorNumber || 1,
+      storyStackCount: Array.isArray(st?.storyStack) ? st.storyStack.length : 0,
       role: cbc?.meta?.role || null,
       meId: cbc?.meta?.playerId || null,
       roomCode: cbc?.meta?.roomCode || st?.roomCode || null,
@@ -259,7 +267,7 @@ async function extractSnapshot(entry) {
   };
 }
 
-async function runSmartAutoSteps(entry, { steps = 15, autoModals = false } = {}) {
+async function runSmartAutoSteps(entry, { steps = 15, autoModals = false, targetFloors = 1 } = {}) {
   const trace = [];
   let stopReason = 'steps-completed';
 
@@ -273,11 +281,22 @@ async function runSmartAutoSteps(entry, { steps = 15, autoModals = false } = {})
     const myHero = snap.heroes.find((h) => h.pid === snap.meId);
 
     if (snap.phase === 'victory') {
+      if ((snap.floorNumber || 1) < targetFloors) {
+        const descendBtn = snap.roomActions.find((a) => a.selector === '#btn-descend-floor');
+        if (descendBtn) {
+          await entry.page.click('#btn-descend-floor');
+          trace.push(`floor:descend-to-${(snap.floorNumber || 1) + 1}`);
+          await entry.page.waitForTimeout(350);
+          continue;
+        }
+        await entry.page.waitForTimeout(500);
+        continue;
+      }
       stopReason = 'victory';
       break;
     }
-    if (myHero?.downed && snap.heroes.every((h) => h.downed)) {
-      stopReason = 'all-downed';
+    if (snap.phase === 'defeat' || (myHero?.downed && snap.heroes.every((h) => h.downed))) {
+      stopReason = 'defeat';
       break;
     }
 
@@ -312,6 +331,14 @@ async function runSmartAutoSteps(entry, { steps = 15, autoModals = false } = {})
       const isMyTurn = snap.role === 'dealer' || cm.heroName === myHero?.name;
       if (!isMyTurn) {
         await entry.page.waitForTimeout(350);
+        continue;
+      }
+
+      const dazedSkip = cm.buttons.find((b) => b.selector === '#btn-clash-dazed-skip' && !b.disabled);
+      if (dazedSkip) {
+        await entry.page.click('#btn-clash-dazed-skip');
+        trace.push('clash:dazed-skip');
+        await entry.page.waitForTimeout(260);
         continue;
       }
 
@@ -398,6 +425,14 @@ async function runSmartAutoSteps(entry, { steps = 15, autoModals = false } = {})
         await entry.page.click('#btn-shrine');
         trace.push('explore:shrine');
         await entry.page.waitForTimeout(260);
+        continue;
+      }
+
+      const descendStairsAct = snap.roomActions.find((a) => a.selector === '#btn-descend-stairs');
+      if (snap.stairsUnlocked && descendStairsAct) {
+        await entry.page.click('#btn-descend-stairs');
+        trace.push('explore:descend-stairs');
+        await entry.page.waitForTimeout(280);
         continue;
       }
 
@@ -519,10 +554,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && pathname === '/auto-step') {
-      const { sessionId, steps = 15, autoModals = false } = await readJson(req);
+      const { sessionId, steps = 15, autoModals = false, targetFloors = 1 } = await readJson(req);
       const entry = sessions.get(sessionId);
       if (!entry) return sendJson(res, 404, { error: 'Session not found' });
-      const result = await runSmartAutoSteps(entry, { steps: Number(steps), autoModals: Boolean(autoModals) });
+      const result = await runSmartAutoSteps(entry, {
+        steps: Number(steps),
+        autoModals: Boolean(autoModals),
+        targetFloors: Math.max(1, Number(targetFloors || 1)),
+      });
       return sendJson(res, 200, result);
     }
 

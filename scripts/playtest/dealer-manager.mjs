@@ -47,6 +47,7 @@ async function createDealerRoom({
   layoutMode = 'random',
   batchId = 'manual',
   testerLabel = '',
+  targetFloors = 1,
   playTwists = true,
   autoStart = true,
 } = {}) {
@@ -68,6 +69,7 @@ async function createDealerRoom({
     batchId,
     source: 'ui-playtest',
     tester: testerLabel || null,
+    targetFloors: Math.max(1, Number(targetFloors || 1)),
   });
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await dismissCoachmarkIfAny(page);
@@ -87,6 +89,7 @@ async function createDealerRoom({
     joinUrl,
     batchId,
     testerLabel,
+    targetFloors: Math.max(1, Number(targetFloors || 1)),
     expectedHeroes: Number(expectedHeroes || 1),
     themeId,
     bossId,
@@ -142,6 +145,7 @@ async function tickRoom(entry) {
       Object.values(st.heroes || {}).every((h) => h.downed);
     return {
       phase: st.phase,
+      floorNumber: st.floorNumber || 1,
       version: st.version,
       heroPlayersCount: heroes.length,
       allPicked,
@@ -173,7 +177,16 @@ async function tickRoom(entry) {
     return;
   }
 
-  if (snapshot.phase === 'victory' || snapshot.allDowned) {
+  if (snapshot.phase === 'victory' && snapshot.floorNumber < entry.targetFloors) {
+    const descendBtn = page.locator('#btn-descend-floor');
+    if (await descendBtn.isVisible({ timeout: 100 }).catch(() => false)) {
+      await descendBtn.click().catch(() => {});
+      entry.lastActiveAt = Date.now();
+    }
+    return;
+  }
+
+  if (snapshot.phase === 'victory' || snapshot.phase === 'defeat' || snapshot.allDowned) {
     entry.ended = true;
     entry.outcome = snapshot.phase === 'victory' ? 'won' : 'lost';
     clearInterval(entry.timer);
@@ -201,7 +214,7 @@ async function tickRoom(entry) {
     snapshot.twistCount > 0 &&
     (snapshot.version || 0) - entry.lastTwistTurn >= 8
   ) {
-    const twistBtn = page.locator('.dealer-twist-play').first();
+    const twistBtn = page.locator('.dealer-twist-play:not([disabled])').first();
     if (await twistBtn.isVisible({ timeout: 80 }).catch(() => false)) {
       if (await twistBtn.isEnabled().catch(() => false)) {
         entry.lastTwistTurn = snapshot.version || 0;
@@ -211,8 +224,8 @@ async function tickRoom(entry) {
     }
   }
 
-  // 12-minute inactivity timeout
-  if (Date.now() - entry.lastActiveAt > 12 * 60 * 1000) {
+  // 15-minute inactivity timeout (multi-floor runs)
+  if (Date.now() - entry.lastActiveAt > 15 * 60 * 1000) {
     entry.ended = true;
     entry.outcome = 'timeout';
     clearInterval(entry.timer);

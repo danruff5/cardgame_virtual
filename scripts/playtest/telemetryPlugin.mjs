@@ -59,6 +59,8 @@ function aggregateBucket(gamesList, now) {
 
   const completed = [];
   const byPartySize = {};
+  const byTargetFloors = {};
+  const byFloorNumber = {};
   const byHero = {};
   const byBoss = {};
   const byMonster = {};
@@ -101,6 +103,49 @@ function aggregateBucket(gamesList, now) {
     byPartySize[pKey].turns.push(g.explorationTurns || 0);
     byPartySize[pKey].desp.push(g.desperationFlips || 0);
     byPartySize[pKey].downed.push(g.heroDownedCount || 0);
+
+    const tfKey = `${g.targetFloors || 1}F`;
+    if (!byTargetFloors[tfKey]) {
+      byTargetFloors[tfKey] = {
+        played: 0,
+        won: 0,
+        lost: 0,
+        floorsCleared: [],
+        turns: [],
+        desp: [],
+        downed: [],
+      };
+    }
+    byTargetFloors[tfKey].played += 1;
+    if (st === 'won') byTargetFloors[tfKey].won += 1;
+    else byTargetFloors[tfKey].lost += 1;
+    byTargetFloors[tfKey].floorsCleared.push(g.floorsCleared ?? (st === 'won' ? g.targetFloors || 1 : 0));
+    byTargetFloors[tfKey].turns.push(g.explorationTurns || 0);
+    byTargetFloors[tfKey].desp.push(g.desperationFlips || 0);
+    byTargetFloors[tfKey].downed.push(g.heroDownedCount || 0);
+
+    for (const fh of g.floorHistory || []) {
+      const fKey = `Floor ${fh.floorNumber || 1}`;
+      if (!byFloorNumber[fKey]) {
+        byFloorNumber[fKey] = {
+          attempts: 0,
+          cleared: 0,
+          wiped: 0,
+          turns: [],
+          clashes: [],
+          desp: [],
+          downed: [],
+        };
+      }
+      const b = byFloorNumber[fKey];
+      b.attempts += 1;
+      if (fh.outcome === 'won') b.cleared += 1;
+      else b.wiped += 1;
+      b.turns.push(fh.turns || 0);
+      b.clashes.push(fh.clashes || 0);
+      b.desp.push(fh.desperationFlips || 0);
+      b.downed.push(fh.heroDownedCount || 0);
+    }
 
     if (g.bossId) {
       if (!byBoss[g.bossId]) byBoss[g.bossId] = { played: 0, won: 0, lost: 0, defeated: 0 };
@@ -169,6 +214,34 @@ function aggregateBucket(gamesList, now) {
   const avgDownedPerFloor = avg(completed.map((g) => g.heroDownedCount || 0));
   const hoard6PlusCount = completed.filter((g) => g.hoarded6Plus).length;
   const bossDefeatCount = completed.filter((g) => g.bossDefeated).length;
+  const avgFloorsCleared = avg(
+    completed.map((g) => g.floorsCleared ?? (effectiveStatus(g, now) === 'won' ? g.targetFloors || 1 : 0)),
+  );
+
+  for (const [k, v] of Object.entries(byTargetFloors)) {
+    byTargetFloors[k] = {
+      played: v.played,
+      won: v.won,
+      lost: v.lost,
+      winRatePct: pct(v.won, v.played),
+      avgFloorsCleared: avg(v.floorsCleared),
+      avgTurns: avg(v.turns),
+      avgDesp: avg(v.desp),
+      avgDowned: avg(v.downed),
+    };
+  }
+  for (const [k, v] of Object.entries(byFloorNumber)) {
+    byFloorNumber[k] = {
+      attempts: v.attempts,
+      cleared: v.cleared,
+      wiped: v.wiped,
+      clearRatePct: pct(v.cleared, v.attempts),
+      avgTurns: avg(v.turns),
+      avgClashes: avg(v.clashes),
+      avgDesp: avg(v.desp),
+      avgDowned: avg(v.downed),
+    };
+  }
 
   for (const [k, v] of Object.entries(byPartySize)) {
     byPartySize[k] = {
@@ -217,7 +290,10 @@ function aggregateBucket(gamesList, now) {
     avgDownedPerFloor,
     hoard6PlusPct: pct(hoard6PlusCount, totalCompleted),
     bossDefeatRatePct: pct(bossDefeatCount, totalCompleted),
+    avgFloorsCleared,
     byPartySize,
+    byTargetFloors,
+    byFloorNumber,
     byHero,
     byBoss,
     byMonster,

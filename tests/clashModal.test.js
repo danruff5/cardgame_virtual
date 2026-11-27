@@ -274,4 +274,18 @@ describe('clash modal items & twin knives UI', () => {
     const cbBtn = html.slice(cbIdx - 80, cbIdx + 80);
     expect(cbBtn).toContain('disabled');
   });
+
+  it('logs special card suits accurately in hover tooltips and disables cards when heroDazed (virtual_07)', () => {
+    const html = formatCombatLogLine('Sir Clanks-a-Lot plays Daze! (spark) — Pip will miss next turn.');
+    expect(html).toContain('Daze! (spark)');
+    expect(html).toContain('Play on SPARK or another Daze!');
+
+    const s = sampleClashState();
+    s.clash.heroDazed = true;
+    const modalHtml = renderClashModal(s, false, 'p1', {});
+    expect(modalHtml).toContain('id="btn-clash-dazed-skip"');
+    const cardIdx = modalHtml.indexOf('data-clash-card="a1"');
+    const cardBtn = modalHtml.slice(cardIdx - 80, cardIdx + 120);
+    expect(cardBtn).toContain('disabled');
+  });
 });
