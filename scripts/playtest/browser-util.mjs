@@ -49,8 +49,15 @@ export function buildAppUrl({
 
 export async function dismissCoachmarkIfAny(page) {
   try {
-    const skip = page.locator('#coach-skip, .coach-skip, [data-coach-skip], button:has-text("Skip tips"), button:has-text("Got it")');
-    if (await skip.first().isVisible({ timeout: 250 })) {
+    const skipAll = page.locator('#coach-skip-all');
+    if (await skipAll.first().isVisible({ timeout: 350 })) {
+      await skipAll.first().click();
+      return true;
+    }
+    const skip = page.locator(
+      '#coach-skip, .coach-skip, [data-coach-skip], button:has-text("Skip all tips"), button:has-text("Skip tips"), button:has-text("Got it")',
+    );
+    if (await skip.first().isVisible({ timeout: 350 })) {
       await skip.first().click();
       return true;
     }

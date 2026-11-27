@@ -81,8 +81,17 @@ async function extractSnapshot(entry) {
 
     const statusBar = text(document.querySelector('.status-bar'));
     const errorText = text(document.querySelector('.status-bar .error'));
-    const coachEl = document.querySelector('.coach-tip');
-    const coachmarkVisible = Boolean(coachEl && coachEl.offsetParent !== null);
+    const coachEl = document.querySelector('#coach-root .coach-tip');
+    const coachRect = coachEl ? coachEl.getBoundingClientRect() : null;
+    const coachStyle = coachEl ? window.getComputedStyle(coachEl) : null;
+    const coachmarkVisible = Boolean(
+      coachEl &&
+        coachRect &&
+        coachRect.width > 0 &&
+        coachRect.height > 0 &&
+        coachStyle?.display !== 'none' &&
+        coachStyle?.visibility !== 'hidden',
+    );
     const coachmarkText = coachmarkVisible ? text(coachEl) : '';
 
     // Map tiles from DOM
@@ -278,6 +287,10 @@ async function runSmartAutoSteps(entry, { steps = 15, autoModals = false, target
     }
 
     const snap = await extractSnapshot(entry);
+    if (snap.coachmarkVisible && !entry.keepCoach) {
+      await dismissCoachmarkIfAny(entry.page);
+      continue;
+    }
     const myHero = snap.heroes.find((h) => h.pid === snap.meId);
 
     if (snap.phase === 'victory') {
@@ -486,6 +499,7 @@ const server = http.createServer(async (req, res) => {
       const { sessionId, roomCode, name = 'Hero', heroId = 'H-01', keepCoach = false, waitStart = true } =
         await readJson(req);
       const entry = await createPageSession(sessionId);
+      entry.keepCoach = Boolean(keepCoach);
       const url = buildAppUrl({ baseUrl: APP_BASE, roomCode });
       await entry.page.goto(url, { waitUntil: 'domcontentloaded' });
       if (!keepCoach) await dismissCoachmarkIfAny(entry.page);
@@ -516,15 +530,31 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && pathname === '/host') {
-      const { sessionId, name = 'Dealer', batchId = null, tester = null, monitor = false, viewport = { width: 1440, height: 900 } } =
-        await readJson(req);
+      const {
+        sessionId,
+        name = 'Dealer',
+        batchId = null,
+        tester = null,
+        monitor = false,
+        keepCoach = false,
+        viewport = { width: 1440, height: 900 },
+      } = await readJson(req);
       const entry = await createPageSession(sessionId, viewport);
+      entry.keepCoach = Boolean(keepCoach);
       const url = buildAppUrl({ baseUrl: APP_BASE, batchId, source: 'ui-playtest', tester, monitor });
       await entry.page.goto(url, { waitUntil: 'domcontentloaded' });
       if (!monitor) {
+        if (!keepCoach) {
+          await entry.page.waitForTimeout(150);
+          await dismissCoachmarkIfAny(entry.page);
+        }
         await entry.page.fill('#name', name);
         await entry.page.click('#btn-host');
         await entry.page.waitForSelector('#join-url', { timeout: 15000 });
+        if (!keepCoach) {
+          await entry.page.waitForTimeout(150);
+          await dismissCoachmarkIfAny(entry.page);
+        }
       } else {
         await entry.page.waitForSelector('.monitor-shell', { timeout: 10000 });
       }
