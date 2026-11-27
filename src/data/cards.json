@@ -22,11 +22,16 @@
     "bossBaseHp": 10,
     "bossHpPerExtraHero": 4,
     "bossTurnsPerHeroTurns": 2,
+    "monsterHpPerExtraFloor": 1,
+    "bossHpPerExtraFloor": 2,
+    "bossBaseDmgFloor3Bonus": 1,
+    "bossEnrageHalfHpPartyMin": 3,
     "theatricalEncoreHeal": 1,
-    "theatricalEncoreMessyOnly": true,
+    "theatricalEncoreMessyOnly": false,
     "theatricalEncoreMaxPerRound": 1,
     "stairsGroupShrineSweep": true,
-    "bossStartWithoutBlockedAllies": true
+    "bossStartWithoutBlockedAllies": true,
+    "rotateThemeAndBossPerFloor": true
   },
   "suits": {
     "brawn": {
@@ -1520,9 +1525,9 @@
       "cunning": 4,
       "baseDmg": 2,
       "traitId": "theatrical-encore",
-      "trait": "Theatrical Encore: Once per round, when a Hero resolves a Messy Desperation Card, heal 1 HP!",
+      "trait": "Theatrical Encore: Once per round, when a Hero resolves a Desperation Card, heal 1 HP!",
       "reward": "1 Tier 2–3 Boss Loot per Hero + Shiny Basement Key",
-      "printTraitHtml": "<b>BOSS • Theatrical Encore:</b> Once/round, when a Hero flips a <b>Messy Desperation</b> card, heals <b>+1 HP</b>!<br><b>Drop:</b> Tier 2–3 Boss Loot/Hero + Basement Key.",
+      "printTraitHtml": "<b>BOSS • Theatrical Encore:</b> Once/round, when a Hero flips any <b>Desperation</b> card, heals <b>+1 HP</b>!<br><b>Drop:</b> Tier 2–3 Boss Loot/Hero + Basement Key.",
       "art": "art_boss_baron_boo.png",
       "flavor": "BEHOLD MY SPOOKINESS! ...Wait, is my cape tangled?"
     }

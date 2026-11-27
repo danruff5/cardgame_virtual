@@ -16,6 +16,7 @@ import {
   prepareFloorDecks,
   pickRandomTheme,
   pickRandomBoss,
+  pickNextUnused,
   entranceTile,
   tileAt,
   adjacentOrthogonal,
@@ -126,6 +127,8 @@ export function applyAction(state, action, actorId) {
 
         next.themeId = next.themeId || pickRandomTheme();
         next.bossId = next.bossId || pickRandomBoss();
+        next.usedThemes = [next.themeId];
+        next.usedBosses = [next.bossId];
         next.layoutMode = action.layoutMode === 'fixed' ? 'fixed' : 'random';
         next.decks = prepareFloorDecks();
         next.pending = null;
@@ -642,7 +645,7 @@ export function applyAction(state, action, actorId) {
         if (!next.floor?.stairsUnlocked) {
           unlockStairs(next, 'Dealer ends the floor and unlocks the stairs.');
         }
-        finishFloor(next, action.message || 'Dealer calls the floor — celebrate or prep Floor 2!');
+        finishFloor(next, action.message || `Dealer calls Floor ${next.floorNumber || 1} — celebrate or descend deeper!`);
         break;
       }
 
@@ -652,6 +655,24 @@ export function applyAction(state, action, actorId) {
           return fail(next, 'Not a player in this game');
         }
         next.floorNumber = (next.floorNumber || 1) + 1;
+        if (RULES.rotateThemeAndBossPerFloor !== false) {
+          if (action.themeId && THEMES.some((t) => t.id === action.themeId)) {
+            next.themeId = action.themeId;
+            next.usedThemes = [...new Set([...(next.usedThemes || []), next.themeId])];
+          } else {
+            const { id, reset } = pickNextUnused(THEMES, next.usedThemes || [next.themeId], next.themeId);
+            next.themeId = id;
+            next.usedThemes = reset ? [id] : [...new Set([...(next.usedThemes || []), id])];
+          }
+          if (action.bossId && BOSSES.some((b) => b.id === action.bossId)) {
+            next.bossId = action.bossId;
+            next.usedBosses = [...new Set([...(next.usedBosses || []), next.bossId])];
+          } else {
+            const { id, reset } = pickNextUnused(BOSSES, next.usedBosses || [next.bossId], next.bossId);
+            next.bossId = id;
+            next.usedBosses = reset ? [id] : [...new Set([...(next.usedBosses || []), id])];
+          }
+        }
         const savedStoryStack = Array.isArray(next.storyStack) ? [...next.storyStack] : [];
         next.decks = prepareFloorDecks();
         next.storyStack = savedStoryStack;
@@ -685,7 +706,12 @@ export function applyAction(state, action, actorId) {
         next.explorationActionsLeft = 2;
         next.phase = 'exploring';
         next.floor = { bossDefeated: false, stairsUnlocked: false, shinyKey: false };
-        appendLog(next, `Descended to Floor ${next.floorNumber}! (${savedStoryStack.length} Story callback(s) carried forward.)`);
+        const nextTheme = THEMES.find((t) => t.id === next.themeId);
+        const nextBoss = BOSSES.find((b) => b.id === next.bossId);
+        appendLog(
+          next,
+          `Descended to Floor ${next.floorNumber}! Theme: ${nextTheme?.name || next.themeId}. Boss waiting: ${nextBoss?.name || next.bossId} (${bossHp(next.bossId, 1, next.floorNumber)} base HP). (${savedStoryStack.length} Story callback(s) carried forward.)`,
+        );
         break;
       }
 
@@ -1183,20 +1209,22 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null, { fighterId
     lootText = forcedMonster.loot || '';
   } else if (isBoss) {
     const boss = BOSSES.find((b) => b.id === state.bossId) || BOSSES[0];
-    // Rulebook §4.4: 12 HP + 3 per Hero beyond the first *in the fight*.
-    // Later joiners add their +3 in joinBossClash.
+    // Rulebook §4.4: 10 HP + 4 per extra Hero + floor scaling *in the fight*.
+    // Later joiners add their +4 in joinBossClash.
+    const floorNum = state.floorNumber || 1;
     monsterName = boss.name;
-    monsterHp = bossHp(boss.id, fighters.length);
+    monsterHp = bossHp(boss.id, fighters.length, floorNum);
     cunning = boss.cunning;
-    baseDmg = boss.baseDmg;
+    baseDmg = boss.baseDmg + (floorNum >= 3 ? (RULES.bossBaseDmgFloor3Bonus ?? 1) : 0);
     monsterId = boss.id;
     trait = boss.trait;
     traitId = boss.traitId || null;
     lootText = boss.reward || '';
   } else if (state.decks.monsters.length) {
     const m = state.decks.monsters.shift();
+    const monFloorBonus = (RULES.monsterHpPerExtraFloor ?? 1) * Math.max(0, (state.floorNumber || 1) - 1);
     monsterName = m.name;
-    monsterHp = m.hp;
+    monsterHp = m.hp + monFloorBonus;
     cunning = m.cunning;
     baseDmg = m.baseDmg;
     monsterId = m.id;
@@ -1244,6 +1272,7 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null, { fighterId
     lootText,
     monsterHand,
     isBoss,
+    enraged: false,
     activeSuit: null,
     activeRank: null,
     pile: [],
@@ -1300,11 +1329,14 @@ function joinBossClash(state, heroPlayerId) {
   const extraHp = RULES.bossHpPerExtraHero || 4;
   clash.monsterMaxHp += extraHp;
   clash.monsterHp += extraHp;
-  clash.bossEvery = clash.fighters.length > 1 ? RULES.bossTurnsPerHeroTurns || 2 : 1;
+  if (!clash.enraged) {
+    clash.bossEvery = clash.fighters.length > 1 ? RULES.bossTurnsPerHeroTurns || 2 : 1;
+  }
   appendLog(
     state,
     `${hero.name} piles into the Boss clash! (${clash.fighters.length} Heroes; Boss ${clash.monsterHp}/${clash.monsterMaxHp} HP).`,
   );
+  maybeEnrageBoss(state);
 }
 
 function buildHeroPlayOptions(hero, clash, card, action = {}) {
@@ -1616,6 +1648,25 @@ function damageMonster(state, hero, amount, card, opts = {}) {
   }
 
   clash.monsterHp = Math.max(0, clash.monsterHp - Math.max(0, dmg));
+  maybeEnrageBoss(state);
+}
+
+function maybeEnrageBoss(state) {
+  const clash = state.clash;
+  if (
+    clash?.isBoss &&
+    !clash.enraged &&
+    clash.monsterHp > 0 &&
+    (clash.fighters?.length || 1) >= (RULES.bossEnrageHalfHpPartyMin ?? 3) &&
+    clash.monsterHp <= Math.floor(clash.monsterMaxHp / 2)
+  ) {
+    clash.enraged = true;
+    clash.bossEvery = 1;
+    appendLog(
+      state,
+      `Boss Enraged! ${clash.monsterName} drops to ${clash.monsterHp}/${clash.monsterMaxHp} HP and now acts after every Hero turn!`,
+    );
+  }
 }
 
 function resolveMonsterCardPlay(state, hero, card) {
@@ -1741,7 +1792,7 @@ function resolveDesperation(state, hero, action = {}) {
   const dealerSuit = action.dealerSuit || ['brawn', 'grit', 'zip', 'spark'][Math.floor(Math.random() * 4)];
   const baseId = card.id?.match(/^D-\d+/)?.[0] || card.id;
 
-  // B-02 Theatrical Encore (rules_01: Messy Desperation only, max once per round)
+  // B-02 Theatrical Encore (rules_09: any Desperation, max once per round)
   if (clash.traitId === 'theatrical-encore') {
     const tierOk = !RULES.theatricalEncoreMessyOnly || card.tier === 'messy';
     const capOk = !RULES.theatricalEncoreMaxPerRound || !clash.encoreUsedThisRound;
@@ -1781,11 +1832,11 @@ function resolveDesperation(state, hero, action = {}) {
       break;
     case 'D-08':
     case 'D-09': // Tangled Shoelaces
-      addCramp(state, hero, 1);
       if (hero.hand.length) {
         const i = Math.floor(Math.random() * hero.hand.length);
         discardToAction(state, hero.hand.splice(i, 1)[0]);
       }
+      addCramp(state, hero, 1);
       clash.activeRank = 1;
       drawTwist(state, 'Messy Desperation');
       break;
@@ -1874,6 +1925,7 @@ function resolveDesperation(state, hero, action = {}) {
       if (card.tier === 'messy') drawTwist(state, 'Messy Desperation');
   }
 
+  maybeEnrageBoss(state);
   appendLog(
     state,
     `Desperation resolved — ${clash.monsterName} ${clash.monsterHp} HP, ${hero.name} ${hero.hp} HP. Active → ${clash.activeSuit || '?'} ${clash.activeRank ?? '?'}`,
@@ -2093,7 +2145,7 @@ function finishFloor(state, reason) {
     hero.hand = hero.hand.filter((c) => !isCramp(c));
   }
   appendLog(state, reason);
-  appendLog(state, `Floor 1 complete! Heroes heal +${clearHeal} HP (checkpoint).`);
+  appendLog(state, `Floor ${state.floorNumber || 1} complete! Heroes heal +${clearHeal} HP (checkpoint).`);
 }
 
 function endHeroExplorationTurn(state) {

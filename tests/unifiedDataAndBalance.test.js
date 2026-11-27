@@ -30,8 +30,13 @@ describe('Shared canonical cards.json integration', () => {
     expect(RULES.smellingSaltsSoloHeal).toBe(3);
     expect(RULES.shrineReviveConsumesPersonalRest).toBe(false);
     expect(RULES.stairsGroupShrineSweep).toBe(true);
-    expect(RULES.theatricalEncoreMessyOnly).toBe(true);
+    expect(RULES.theatricalEncoreMessyOnly).toBe(false);
     expect(RULES.theatricalEncoreMaxPerRound).toBe(1);
+    expect(RULES.bossHpPerExtraFloor).toBe(2);
+    expect(RULES.monsterHpPerExtraFloor).toBe(1);
+    expect(RULES.bossBaseDmgFloor3Bonus).toBe(1);
+    expect(RULES.bossEnrageHalfHpPartyMin).toBe(3);
+    expect(RULES.rotateThemeAndBossPerFloor).toBe(true);
 
     const localCardsPath = path.resolve(process.cwd(), 'src/data/cards.json');
     expect(fs.existsSync(localCardsPath)).toBe(true);
@@ -60,7 +65,7 @@ describe('rules_01 — Monster HP trim & Baron Von Boo Theatrical Encore cap', (
     });
   });
 
-  it('heals Baron Von Boo (+1 HP) only on Messy Desperation and at most once per round', () => {
+  it('heals Baron Von Boo (+1 HP) on any Desperation (rules_09) and at most once per round', () => {
     const dealerId = 'dealer-1';
     let state = createEmptyState('BOO', dealerId, 'Dealer');
     state.players.push(
@@ -86,25 +91,17 @@ describe('rules_01 — Monster HP trim & Baron Von Boo Theatrical Encore cap', (
     const messyB = DESPERATION.find((d) => d.id === 'D-05'); // Dropped the Sword! (messy, 0 monster dmg)
     const messyC = DESPERATION.find((d) => d.id === 'D-06'); // Giant Sneeze! (messy, 0 monster dmg)
 
-    // 1) Neutral Desperation must NOT trigger Theatrical Encore
+    // 1) Neutral Desperation ALSO triggers Theatrical Encore (+1 HP: 8 -> 9) under rules_09
     state.decks.desperation = [{ ...neutralCard }, { ...messyA }, { ...messyB }, { ...messyC }];
     let r = applyAction(state, { type: 'clash-desperation' }, 'h1');
     expect(r.ok).toBe(true);
-    expect(r.state.clash.monsterHp).toBe(8);
+    expect(r.state.clash.monsterHp).toBe(9);
 
-    // 2) h2 flips Messy Desperation -> Baron heals +1 HP (8 -> 9)
+    // 2) 2nd Desperation in the same round is STILL capped at once per round (stays 9)
     r = applyAction(r.state, { type: 'clash-desperation' }, 'h2');
     expect(r.ok).toBe(true);
     expect(r.state.clash.monsterHp).toBe(9);
     expect(r.state.clash.whoseTurn).toBe('monster');
-
-    // Simulate another messy flip in the same round before monster turn resets it
-    const sameRound = structuredClone(r.state);
-    sameRound.clash.whoseTurn = 'hero';
-    sameRound.clash.heroPlayerId = 'h1';
-    const rCap = applyAction(sameRound, { type: 'clash-desperation' }, 'h1');
-    expect(rCap.ok).toBe(true);
-    expect(rCap.state.clash.monsterHp).toBe(9); // Capped at once per round!
 
     // 3) After Baron takes his Boss turn, the once-per-round cap resets
     r.state.clash.monsterHand = [];
@@ -320,5 +317,130 @@ describe('rules_06 — Unlocked Stairs Free Group Descent & Narrative Shrine Swe
     expect(r.state.heroes.h2.downed).toBe(false);
     expect(r.state.heroes.h2.hp).toBe(8);
     expect(r.state.heroes.h2.hand).toHaveLength(4);
+  });
+});
+
+describe('rules_08 — Multi-Floor Enemy Scaling & 3P-4P Boss Half-HP Enrage', () => {
+  it('scales Boss HP by +2/floor, Monster HP by +1/floor, and Floor 3+ Boss Base Dmg by +1', () => {
+    // Pure bossHp formula across Floors 1-3
+    expect(bossHp('B-01', 1, 1)).toBe(10);
+    expect(bossHp('B-01', 1, 2)).toBe(12);
+    expect(bossHp('B-01', 3, 3)).toBe(22); // 10 + 8 (2 extras) + 4 (2 extra floors)
+
+    const { state: base, heroPlayerId, dealerId } = startExploringFloor({ layoutMode: 'fixed' });
+    const lair = base.map.tiles.find((t) => t.kind === 'monster');
+    const adj = base.map.tiles.find((t) => t.key !== lair.key && tilesConnect(lair, t));
+
+    // Floor 2 Monster gets +1 HP
+    const f2 = placeHeroOn(base, heroPlayerId, adj.key);
+    f2.floorNumber = 2;
+    f2.explorationActionsLeft = 2;
+    const topMon = f2.decks.monsters[0];
+    const rMon2 = applyAction(f2, { type: 'move', x: lair.x, y: lair.y, playerId: heroPlayerId }, dealerId);
+    expect(rMon2.ok).toBe(true);
+    expect(rMon2.state.clash.monsterHp).toBe(topMon.hp + 1);
+
+    // Floor 3 Boss gets +4 HP and +1 Base Dmg
+    const f3 = structuredClone(base);
+    f3.floorNumber = 3;
+    const bossDef = BOSSES.find((b) => b.id === f3.bossId);
+    const bossTile = f3.map.tiles.find((t) => t.kind === 'boss');
+    bossTile.faceUp = true;
+    bossTile.cleared = false;
+    f3.heroes[heroPlayerId].roomKey = bossTile.key;
+    const rBoss3 = applyAction(f3, { type: 'start-boss-clash' }, dealerId);
+    expect(rBoss3.ok).toBe(true);
+    expect(rBoss3.state.clash.monsterHp).toBe(bossDef.baseHp + 4);
+    expect(rBoss3.state.clash.baseDmg).toBe(bossDef.baseDmg + 1);
+  });
+
+  it('enrages 3P Boss at <=50% HP (bossEvery 2 -> 1), while 2P Boss does NOT enrage', () => {
+    function makeBossParty(count) {
+      const dealerId = 'dealer-1';
+      let s = createEmptyState('ENR', dealerId, 'Dealer');
+      const ids = [];
+      for (let i = 1; i <= count; i += 1) {
+        const pid = `h${i}`;
+        ids.push(pid);
+        s.players.push({ id: pid, name: `H${i}`, role: 'hero', heroId: HEROES[i - 1].id, connected: true });
+        s = applyAction(s, { type: 'pick-hero', playerId: pid, heroId: HEROES[i - 1].id }, pid).state;
+      }
+      s = applyAction(s, { type: 'set-boss', bossId: 'B-01' }, dealerId).state;
+      s = applyAction(s, { type: 'start-floor', layoutMode: 'fixed' }, dealerId).state;
+      const bossTile = s.map.tiles.find((t) => t.kind === 'boss');
+      bossTile.faceUp = true;
+      bossTile.cleared = false;
+      for (const pid of ids) s.heroes[pid].roomKey = bossTile.key;
+      s = applyAction(s, { type: 'start-boss-clash' }, dealerId).state;
+      return { state: s, dealerId };
+    }
+
+    // 3P party: 18 max HP -> enrages at <= 9 HP
+    const { state: s3 } = makeBossParty(3);
+    expect(s3.clash.monsterMaxHp).toBe(18);
+    expect(s3.clash.bossEvery).toBe(2);
+    expect(s3.clash.enraged).toBe(false);
+    s3.clash.monsterHp = 10;
+    s3.clash.activeSuit = 'brawn';
+    s3.clash.activeRank = 1;
+    s3.clash.needsDraw = false;
+    s3.heroes.h1.hand = [{ id: 'A-TEST', type: 'rank', suit: 'brawn', rank: 4 }];
+    const r3 = applyAction(s3, { type: 'clash-play', cardId: 'A-TEST' }, 'h1');
+    expect(r3.ok).toBe(true);
+    expect(r3.state.clash.monsterHp).toBeLessThanOrEqual(9);
+    expect(r3.state.clash.enraged).toBe(true);
+    expect(r3.state.clash.bossEvery).toBe(1);
+    expect(r3.state.log.some((l) => /Boss Enraged!/i.test(l))).toBe(true);
+
+    // 2P party: 14 max HP -> dropping below 7 HP does NOT enrage
+    const { state: s2 } = makeBossParty(2);
+    expect(s2.clash.monsterMaxHp).toBe(14);
+    expect(s2.clash.bossEvery).toBe(2);
+    s2.clash.monsterHp = 7;
+    s2.clash.activeSuit = 'brawn';
+    s2.clash.activeRank = 1;
+    s2.clash.needsDraw = false;
+    s2.heroes.h1.hand = [{ id: 'A-TEST2', type: 'rank', suit: 'brawn', rank: 4 }];
+    const r2 = applyAction(s2, { type: 'clash-play', cardId: 'A-TEST2' }, 'h1');
+    expect(r2.ok).toBe(true);
+    expect(r2.state.clash.enraged).toBe(false);
+    expect(r2.state.clash.bossEvery).toBe(2);
+  });
+});
+
+describe('rules_10 & virtual_22 — Multi-Floor Theme/Boss Rotation & Dynamic Floor Log', () => {
+  it('rotates unused Themes and Bosses across Floors 1 -> 2 -> 3 and logs dynamic floor completion', () => {
+    const { state: f1, dealerId } = startExploringFloor({ layoutMode: 'fixed' });
+    const theme1 = f1.themeId;
+    const boss1 = f1.bossId;
+
+    // End Floor 1 -> Descend to Floor 2
+    let r = applyAction(f1, { type: 'end-floor' }, dealerId);
+    expect(r.ok).toBe(true);
+    expect(r.state.log.some((l) => /Floor 1 complete!/.test(l))).toBe(true);
+
+    r = applyAction(r.state, { type: 'descend-floor' }, dealerId);
+    expect(r.ok).toBe(true);
+    const theme2 = r.state.themeId;
+    const boss2 = r.state.bossId;
+    expect(theme2).not.toBe(theme1);
+    expect(boss2).not.toBe(boss1);
+
+    // End Floor 2 -> check virtual_22 log -> Descend to Floor 3
+    r = applyAction(r.state, { type: 'end-floor' }, dealerId);
+    expect(r.ok).toBe(true);
+    expect(r.state.log.some((l) => /Floor 2 complete!/.test(l))).toBe(true);
+
+    r = applyAction(r.state, { type: 'descend-floor' }, dealerId);
+    expect(r.ok).toBe(true);
+    const theme3 = r.state.themeId;
+    const boss3 = r.state.bossId;
+    expect(theme3).not.toBe(theme2);
+    expect(boss3).not.toBe(boss2);
+
+    // End Floor 3 -> check virtual_22 log
+    r = applyAction(r.state, { type: 'end-floor' }, dealerId);
+    expect(r.ok).toBe(true);
+    expect(r.state.log.some((l) => /Floor 3 complete!/.test(l))).toBe(true);
   });
 });

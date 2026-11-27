@@ -31,6 +31,8 @@ export function createEmptyState(roomCode, hostPlayerId, hostName) {
     log: [`Room ${roomCode} opened. Waiting for heroes…`],
     themeId: null,
     bossId: null,
+    usedThemes: [],
+    usedBosses: [],
     floor: {
       bossDefeated: false,
       stairsUnlocked: false,
@@ -164,6 +166,19 @@ export function pickRandomTheme() {
 
 export function pickRandomBoss() {
   return BOSSES[Math.floor(Math.random() * BOSSES.length)].id;
+}
+
+export function pickNextUnused(items, usedIds = [], currentId = null) {
+  const used = new Set(usedIds || []);
+  let pool = items.filter((it) => !used.has(it.id) && it.id !== currentId);
+  let reset = false;
+  if (!pool.length) {
+    reset = true;
+    const withoutCurrent = items.filter((it) => it.id !== currentId);
+    pool = withoutCurrent.length ? withoutCurrent : items;
+  }
+  const picked = pool[Math.floor(Math.random() * pool.length)];
+  return { id: picked.id, reset };
 }
 
 function slimActionCard(c) {

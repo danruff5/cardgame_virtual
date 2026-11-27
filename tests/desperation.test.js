@@ -90,13 +90,26 @@ describe('Desperation Deck D-01..D-20 (virtual_02)', () => {
     }
   });
 
-  it('D-08..D-09 Tangled Shoelaces discards 1 card and adds 1 Cramp', () => {
+  it('D-08..D-09 Tangled Shoelaces discards 1 existing card BEFORE adding 1 Cramp (never discards the new Cramp)', () => {
     for (const id of ['D-08', 'D-09']) {
-      const { state } = clashWithDesperation(id);
-      const r = applyAction(state, { type: 'clash-desperation' }, 'h1');
-      expect(r.ok).toBe(true);
-      expect(r.state.heroes.h1.hand.some((c) => c.type === 'cramp')).toBe(true);
-      expect(r.state.clash.monsterHp).toBe(8);
+      for (let iter = 0; iter < 20; iter += 1) {
+        const { state } = clashWithDesperation(id);
+        const beforeCount = state.heroes.h1.hand.length;
+        const r = applyAction(state, { type: 'clash-desperation' }, 'h1');
+        expect(r.ok).toBe(true);
+        const crampCount = r.state.heroes.h1.hand.filter((c) => c.type === 'cramp').length;
+        expect(crampCount).toBe(1);
+        expect(r.state.heroes.h1.hand).toHaveLength(beforeCount); // -1 existing + 1 Cramp
+        expect(r.state.clash.monsterHp).toBe(8);
+      }
+
+      // 1-card-hand edge case: that 1 card is discarded and replaced by 1 Cramp!
+      const { state: oneCardState } = clashWithDesperation(id);
+      oneCardState.heroes.h1.hand = [oneCardState.heroes.h1.hand[0]];
+      const rOne = applyAction(oneCardState, { type: 'clash-desperation' }, 'h1');
+      expect(rOne.ok).toBe(true);
+      expect(rOne.state.heroes.h1.hand).toHaveLength(1);
+      expect(rOne.state.heroes.h1.hand[0].type).toBe('cramp');
     }
   });
 
