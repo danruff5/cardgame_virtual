@@ -154,7 +154,7 @@ function renderBossGatherBar(state, isDealer, meId) {
   return `
     <div class="boss-gather-bar" data-coach="boss-gather">
       <div class="boss-gather-mini">
-        ${renderMonsterCard(gather.boss.id, { size: 'mini', isBoss: true })}
+        ${renderMonsterCard(gather.boss.id, { size: 'mini', isBoss: true, floorNumber: state.floorNumber || 1 })}
       </div>
       <div class="boss-gather-meta">
         <strong>${esc(gather.boss.name)} waits</strong>

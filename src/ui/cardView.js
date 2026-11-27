@@ -346,7 +346,7 @@ export function renderRoomTile(tile, { stairsUnlocked = false } = {}) {
   </div>`;
 }
 
-export function renderMonsterCard(monsterId, { size = 'table', hp, maxHp, isBoss = false } = {}) {
+export function renderMonsterCard(monsterId, { size = 'table', hp, maxHp, isBoss = false, floorNumber = 1 } = {}) {
   const mon = MONSTERS.find((m) => m.id === monsterId) || BOSSES.find((b) => b.id === monsterId);
   if (!mon) {
     return renderCompositorCard({
@@ -371,7 +371,7 @@ export function renderMonsterCard(monsterId, { size = 'table', hp, maxHp, isBoss
   return renderCompositorCard({
     id: mon.id,
     title: mon.name,
-    badge: boss ? 'FLOOR 1 BOSS' : 'MONSTER',
+    badge: boss ? `FLOOR ${Math.max(1, Number(floorNumber) || 1)} BOSS` : 'MONSTER',
     accent: boss ? '#7E4BB5' : '#544663',
     frame: 'frame_monster.png',
     art,

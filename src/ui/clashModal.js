@@ -710,6 +710,7 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
                       hp: clash.monsterHp,
                       maxHp: clash.monsterMaxHp,
                       isBoss: clash.isBoss,
+                      floorNumber: state.floorNumber || 1,
                     })}
                   </div>
                 </div>
