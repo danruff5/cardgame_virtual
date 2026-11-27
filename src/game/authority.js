@@ -5,6 +5,7 @@ import {
   THEMES,
   BOSSES,
   MONSTERS,
+  STORIES,
   bossHp,
   gearByTier,
 } from '../data/index.js';
@@ -15,6 +16,7 @@ import {
   prepareFloorDecks,
   pickRandomTheme,
   pickRandomBoss,
+  pickNextUnused,
   entranceTile,
   tileAt,
   adjacentOrthogonal,
@@ -125,6 +127,8 @@ export function applyAction(state, action, actorId) {
 
         next.themeId = next.themeId || pickRandomTheme();
         next.bossId = next.bossId || pickRandomBoss();
+        next.usedThemes = [next.themeId];
+        next.usedBosses = [next.bossId];
         next.layoutMode = action.layoutMode === 'fixed' ? 'fixed' : 'random';
         next.decks = prepareFloorDecks();
         next.pending = null;
@@ -231,12 +235,13 @@ export function applyAction(state, action, actorId) {
           appendLog(next, `${playerName} tip-toes through ${to.name} (½ Action).`);
         }
 
-        // Surprise Intern / lurking monster on a cleared room
-        if (to.faceUp && to.lurkingMonster && to.cleared) {
+        // Surprise Intern / lurking or surviving monster on a room
+        if (to.faceUp && to.lurkingMonster) {
           next.explorationActionsLeft = 0;
-          appendLog(next, `${playerName} bumps into a lurking ${to.lurkingMonster.name}!`);
-          startClash(next, heroPid, to, to.lurkingMonster);
+          const lurking = to.lurkingMonster;
           to.lurkingMonster = null;
+          appendLog(next, `${playerName} engages ${lurking.name} (${lurking.hp} HP)!`);
+          startClash(next, heroPid, to, lurking);
           break;
         }
 
@@ -368,7 +373,9 @@ export function applyAction(state, action, actorId) {
             discardToAction(next, card);
             clash.twinRank = null;
             appendLog(next, `Sneaky Blanket of Vanishing — ${hero.name} tip-toes out of combat!`);
+            const fleeFrom = clash.roomKey;
             cleanupClash(next, { victory: false });
+            relocateHeroAfterFlee(next, hero, fleeFrom);
             break;
           }
           discardToAction(next, card);
@@ -433,6 +440,21 @@ export function applyAction(state, action, actorId) {
         break;
       }
 
+      case 'clash-skip-dazed': {
+        if (next.phase !== 'clash' || !next.clash) return fail(next, 'No active clash');
+        const clash = next.clash;
+        if (clash.whoseTurn !== 'hero') return fail(next, 'Not hero combat turn');
+        if (!clash.heroDazed) return fail(next, 'Hero is not Dazed');
+        const heroPid = clash.heroPlayerId;
+        if (actor.role !== 'dealer' && actorId !== heroPid) return fail(next, 'Not your clash');
+        const hero = next.heroes[heroPid];
+        clash.heroDazed = false;
+        clash.twinRank = null;
+        appendLog(next, `${hero.name} is Dazed and misses this turn!`);
+        advanceAfterHeroTurn(next, { skipped: true });
+        break;
+      }
+
       case 'clash-clear-cramp': {
         if (next.phase !== 'clash' || !next.clash) return fail(next, 'No active clash');
         const clash = next.clash;
@@ -488,7 +510,9 @@ export function applyAction(state, action, actorId) {
           hero.belt.splice(beltIdx, 1);
           if (action.mode === 'flee') {
             appendLog(next, `${hero.name} pops ${def.name} and slips away!`);
+            const fleeFrom = clash.roomKey;
             cleanupClash(next, { victory: false });
+            relocateHeroAfterFlee(next, hero, fleeFrom);
           } else {
             clash.monsterDazed = true;
             appendLog(next, `${hero.name} pops ${def.name} — ${clash.monsterName} is Dazed! (Free action.)`);
@@ -577,7 +601,9 @@ export function applyAction(state, action, actorId) {
           endClashVictory(next);
         } else if (action.result === 'flee') {
           appendLog(next, `${hero.name} slips away from ${next.clash.monsterName} (flee).`);
+          const fleeFrom = next.clash.roomKey;
           cleanupClash(next, { victory: false });
+          relocateHeroAfterFlee(next, hero, fleeFrom);
         } else {
           return fail(next, 'Unknown clash result');
         }
@@ -619,7 +645,86 @@ export function applyAction(state, action, actorId) {
         if (!next.floor?.stairsUnlocked) {
           unlockStairs(next, 'Dealer ends the floor and unlocks the stairs.');
         }
-        finishFloor(next, action.message || 'Dealer calls the floor — celebrate or prep Floor 2!');
+        finishFloor(next, action.message || `Dealer calls Floor ${next.floorNumber || 1} — celebrate or descend deeper!`);
+        break;
+      }
+
+      case 'descend-floor': {
+        if (next.phase !== 'victory') return fail(next, 'Finish the current floor first');
+        if (actor.role !== 'dealer' && !next.heroes[actorId]) {
+          return fail(next, 'Not a player in this game');
+        }
+        next.floorNumber = (next.floorNumber || 1) + 1;
+        if (RULES.rotateThemeAndBossPerFloor !== false) {
+          if (action.themeId && THEMES.some((t) => t.id === action.themeId)) {
+            next.themeId = action.themeId;
+            next.usedThemes = [...new Set([...(next.usedThemes || []), next.themeId])];
+          } else {
+            const { id, reset } = pickNextUnused(THEMES, next.usedThemes || [next.themeId], next.themeId);
+            next.themeId = id;
+            next.usedThemes = reset ? [id] : [...new Set([...(next.usedThemes || []), id])];
+          }
+          if (action.bossId && BOSSES.some((b) => b.id === action.bossId)) {
+            next.bossId = action.bossId;
+            next.usedBosses = [...new Set([...(next.usedBosses || []), next.bossId])];
+          } else {
+            const { id, reset } = pickNextUnused(BOSSES, next.usedBosses || [next.bossId], next.bossId);
+            next.bossId = id;
+            next.usedBosses = reset ? [id] : [...new Set([...(next.usedBosses || []), id])];
+          }
+        }
+        const savedStoryStack = Array.isArray(next.storyStack) ? [...next.storyStack] : [];
+        next.decks = prepareFloorDecks();
+        next.storyStack = savedStoryStack;
+        next.pending = null;
+        next.clash = null;
+        if (next.decks.twists.length) {
+          next.decks.twistHand.push(next.decks.twists.shift());
+        }
+        next.map = buildFloorMap(next.layoutMode);
+        next.map.barriers = next.map.barriers || [];
+        const entrance = entranceTile(next);
+        for (const hero of Object.values(next.heroes || {})) {
+          if (hero.downed) {
+            hero.downed = false;
+            hero.hp = 5;
+          }
+          hero.hand = (hero.hand || []).filter((c) => !isCramp(c));
+          while (hero.hand.length < 4 && next.decks.action.length) {
+            hero.hand.push(next.decks.action.shift());
+          }
+          hero.roomKey = entrance.key;
+          hero.shrineUsedThisFloor = false;
+          hero.secondWindUsed = false;
+          hero.perkUsedThisClash = false;
+          hero.stuntGearUsed = { scarf: false, kaleidoscope: false };
+          if (hero.offhand) hero.offhand.tapped = false;
+          if (hero.armor) hero.armor.tapped = false;
+        }
+        const firstConscious = next.turnOrder.findIndex((id) => !next.heroes[id]?.downed);
+        next.activeHeroIndex = firstConscious >= 0 ? firstConscious : 0;
+        next.explorationActionsLeft = 2;
+        next.phase = 'exploring';
+        next.floor = { bossDefeated: false, stairsUnlocked: false, shinyKey: false };
+        const nextTheme = THEMES.find((t) => t.id === next.themeId);
+        const nextBoss = BOSSES.find((b) => b.id === next.bossId);
+        appendLog(
+          next,
+          `Descended to Floor ${next.floorNumber}! Theme: ${nextTheme?.name || next.themeId}. Boss waiting: ${nextBoss?.name || next.bossId} (${bossHp(next.bossId, 1, next.floorNumber)} base HP). (${savedStoryStack.length} Story callback(s) carried forward.)`,
+        );
+        break;
+      }
+
+      case 'theme-swap-rooms': {
+        if (actor.role !== 'dealer') return fail(next, 'Dealer only');
+        if (next.themeId !== 'T-01') return fail(next, 'Requires Theme T-01 (Wobbly Shifting Maze)');
+        if (next.phase !== 'exploring') return fail(next, 'Can only swap rooms while exploring');
+        const hidden = next.map.tiles.filter((t) => !t.faceUp);
+        if (hidden.length < 2) return fail(next, 'Need at least 2 unflipped rooms to swap');
+        const a = (action.keyA && hidden.find((t) => t.key === action.keyA)) || hidden[0];
+        const b = (action.keyB && hidden.find((t) => t.key === action.keyB && t.key !== a.key)) || hidden.find((t) => t.key !== a.key);
+        swapTilePositions(a, b);
+        appendLog(next, `The Wobbly Shifting Maze — Dealer swaps 2 unflipped rooms!`);
         break;
       }
 
@@ -750,29 +855,36 @@ export function applyAction(state, action, actorId) {
 
         if (action.subtype === 'merchant') {
           if (!tile.merchant) return fail(next, 'No merchant here');
-          next.explorationActionsLeft -= 1;
-          // Bundle deal: discard 1 belt consumable → draw 2 loot keep 1
-          const beltIdx = Number(action.beltIndex);
-          if (!Number.isInteger(beltIdx) || !hero.belt?.[beltIdx]) {
-            return fail(next, 'Pick a belt item to trade');
+          const hasLegacyBelt = action.beltIndex !== undefined && action.beltIndex !== null;
+          if (!action.deal && !hasLegacyBelt) {
+            next.pending = {
+              kind: 'merchant',
+              heroPlayerId: heroPid,
+              tileKey: tile.key,
+              merchant: tile.merchant,
+            };
+            appendLog(next, `${playerName} browses ${tile.merchant.name}'s cart.`);
+            break;
           }
-          const traded = hero.belt.splice(beltIdx, 1)[0];
-          const drawn = drawLoot(next, 2);
-          if (!drawn.length) {
-            hero.belt.push(traded);
-            return fail(next, 'Loot deck empty');
+          const res = executeMerchantDeal(next, hero, playerName, tile, action, heroPid);
+          if (!res.ok) return fail(next, res.error);
+          break;
+        }
+
+        if (action.subtype === 'story') {
+          if (!tile.story || tile.storyResolved) return fail(next, 'No active story here');
+          if (action.choice) {
+            applyStoryChoice(next, hero, tile.story, action.choice, tile.key, action);
+            maybeEndExplore(next);
+          } else {
+            next.pending = {
+              kind: 'story',
+              heroPlayerId: heroPid,
+              tileKey: tile.key,
+              story: tile.story,
+            };
+            appendLog(next, `${playerName} speaks with ${tile.story.name}.`);
           }
-          next.pending = {
-            kind: 'vault',
-            heroPlayerId: heroPid,
-            tileKey: tile.key,
-            options: drawn,
-            tradedName: traded.name,
-          };
-          appendLog(
-            next,
-            `${playerName} trades ${traded.name} with ${tile.merchant.name} — pick 1 loot.`,
-          );
           break;
         }
 
@@ -810,10 +922,10 @@ export function applyAction(state, action, actorId) {
             next.decks.lootDiscard = next.decks.lootDiscard || [];
             next.decks.lootDiscard.push(pending.options[i]);
           }
-          grantLootToHero(next, hero, kept);
           const tile = next.map.tiles.find((t) => t.key === pending.tileKey);
           if (tile?.kind === 'vault') tile.looted = true;
           next.pending = null;
+          grantLootToHero(next, hero, kept, heroPid);
           appendLog(next, `${hero.name} keeps ${kept.name}.`);
           maybeEndExplore(next);
           break;
@@ -824,11 +936,51 @@ export function applyAction(state, action, actorId) {
           if (choice !== 'a' && choice !== 'b') {
             return fail(next, 'Choose A or B');
           }
-          applyEventChoice(next, hero, pending.event, choice);
           const tile = next.map.tiles.find((t) => t.key === pending.tileKey);
           if (tile) {
             tile.cleared = true;
             tile.eventResolved = true;
+          }
+          next.pending = null;
+          applyEventChoice(next, hero, pending.event, choice, action, heroPid);
+          maybeEndExplore(next);
+          break;
+        }
+
+        if (pending.kind === 'merchant') {
+          if (action.cancel) {
+            next.pending = null;
+            break;
+          }
+          const tile = next.map.tiles.find((t) => t.key === pending.tileKey);
+          const playerName = next.players.find((p) => p.id === heroPid)?.name || hero.name || 'Hero';
+          next.pending = null;
+          const res = executeMerchantDeal(next, hero, playerName, tile, action, heroPid);
+          if (!res.ok) return fail(next, res.error);
+          maybeEndExplore(next);
+          break;
+        }
+
+        if (pending.kind === 'story') {
+          const choice = String(action.choice || 'a').toLowerCase();
+          next.pending = null;
+          applyStoryChoice(next, hero, pending.story, choice, pending.tileKey, action, heroPid);
+          maybeEndExplore(next);
+          break;
+        }
+
+        if (pending.kind === 'belt-overflow') {
+          const discardIdx = Number(action.discardIndex ?? action.dropIndex);
+          const pool = [...(hero.belt || []), pending.newItem];
+          if (!Number.isInteger(discardIdx) || discardIdx < 0 || discardIdx >= pool.length) {
+            return fail(next, 'Pick a belt item to discard');
+          }
+          const [dropped] = pool.splice(discardIdx, 1);
+          hero.belt = pool.slice(0, 2);
+          if (dropped) {
+            next.decks.lootDiscard = next.decks.lootDiscard || [];
+            next.decks.lootDiscard.push(dropped);
+            appendLog(next, `${hero.name} discards ${dropped.name} from belt (keeps ${hero.belt.map((b) => b.name).join(' & ')}).`);
           }
           next.pending = null;
           maybeEndExplore(next);
@@ -844,6 +996,8 @@ export function applyAction(state, action, actorId) {
         const hand = next.decks.twistHand || [];
         const idx = hand.findIndex((t) => t.id === twistId);
         if (idx < 0) return fail(next, 'Twist not in hand');
+        const check = canPlayTwist(next, hand[idx]);
+        if (!check.ok) return fail(next, check.reason);
         const twist = hand.splice(idx, 1)[0];
         applyTwist(next, twist, action);
         break;
@@ -956,6 +1110,18 @@ export function applyAction(state, action, actorId) {
           else if (to.kind === 'merchant') beginMerchantRoom(next, to);
         } else {
           appendLog(next, `${hero.name} carries ${ally.name} to ${to.name} (2 Actions).`);
+          if (to.lurkingMonster) {
+            next.explorationActionsLeft = 0;
+            const lurking = to.lurkingMonster;
+            to.lurkingMonster = null;
+            startClash(next, heroPid, to, lurking);
+            break;
+          }
+          if (to.kind === 'monster' && !to.cleared) {
+            next.explorationActionsLeft = 0;
+            startClash(next, heroPid, to);
+            break;
+          }
         }
         maybeEndExplore(next);
         break;
@@ -1018,6 +1184,7 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null, { fighterId
   state.phase = 'clash';
   let monsterName = 'Mystery Critter';
   let monsterHp = 4;
+  let monsterMaxHp = null;
   let cunning = 3;
   let baseDmg = 1;
   let monsterId = null;
@@ -1033,6 +1200,7 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null, { fighterId
   if (forcedMonster) {
     monsterName = forcedMonster.name;
     monsterHp = forcedMonster.hp;
+    monsterMaxHp = forcedMonster.maxHp ?? forcedMonster.hp;
     cunning = forcedMonster.cunning;
     baseDmg = forcedMonster.baseDmg;
     monsterId = forcedMonster.id;
@@ -1041,20 +1209,22 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null, { fighterId
     lootText = forcedMonster.loot || '';
   } else if (isBoss) {
     const boss = BOSSES.find((b) => b.id === state.bossId) || BOSSES[0];
-    // Rulebook §4.4: 12 HP + 3 per Hero beyond the first *in the fight*.
-    // Later joiners add their +3 in joinBossClash.
+    // Rulebook §4.4: 10 HP + 4 per extra Hero + floor scaling *in the fight*.
+    // Later joiners add their +4 in joinBossClash.
+    const floorNum = state.floorNumber || 1;
     monsterName = boss.name;
-    monsterHp = bossHp(boss.id, fighters.length);
+    monsterHp = bossHp(boss.id, fighters.length, floorNum);
     cunning = boss.cunning;
-    baseDmg = boss.baseDmg;
+    baseDmg = boss.baseDmg + (floorNum >= 3 ? (RULES.bossBaseDmgFloor3Bonus ?? 1) : 0);
     monsterId = boss.id;
     trait = boss.trait;
     traitId = boss.traitId || null;
     lootText = boss.reward || '';
   } else if (state.decks.monsters.length) {
     const m = state.decks.monsters.shift();
+    const monFloorBonus = (RULES.monsterHpPerExtraFloor ?? 1) * Math.max(0, (state.floorNumber || 1) - 1);
     monsterName = m.name;
-    monsterHp = m.hp;
+    monsterHp = m.hp + monFloorBonus;
     cunning = m.cunning;
     baseDmg = m.baseDmg;
     monsterId = m.id;
@@ -1094,7 +1264,7 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null, { fighterId
     monsterId,
     monsterName,
     monsterHp,
-    monsterMaxHp: monsterHp,
+    monsterMaxHp: monsterMaxHp ?? monsterHp,
     baseDmg,
     cunning,
     trait,
@@ -1102,6 +1272,7 @@ function startClash(state, heroPlayerId, tile, forcedMonster = null, { fighterId
     lootText,
     monsterHand,
     isBoss,
+    enraged: false,
     activeSuit: null,
     activeRank: null,
     pile: [],
@@ -1158,11 +1329,14 @@ function joinBossClash(state, heroPlayerId) {
   const extraHp = RULES.bossHpPerExtraHero || 4;
   clash.monsterMaxHp += extraHp;
   clash.monsterHp += extraHp;
-  clash.bossEvery = clash.fighters.length > 1 ? RULES.bossTurnsPerHeroTurns || 2 : 1;
+  if (!clash.enraged) {
+    clash.bossEvery = clash.fighters.length > 1 ? RULES.bossTurnsPerHeroTurns || 2 : 1;
+  }
   appendLog(
     state,
     `${hero.name} piles into the Boss clash! (${clash.fighters.length} Heroes; Boss ${clash.monsterHp}/${clash.monsterMaxHp} HP).`,
   );
+  maybeEnrageBoss(state);
 }
 
 function buildHeroPlayOptions(hero, clash, card, action = {}) {
@@ -1253,7 +1427,7 @@ function beginNextHeroCombatTurn(state) {
     clash.heroPlayerId = fighters[clash.fighterIndex];
   }
   clash.whoseTurn = 'hero';
-  clash.needsDraw = true;
+  clash.needsDraw = !clash.heroDazed;
 }
 
 function drawAction(state, hero) {
@@ -1320,13 +1494,13 @@ function resolveHeroCardPlay(state, hero, card, wildSuit, playOpts = {}) {
         clash.monsterDazed = false;
         appendLog(
           state,
-          `${hero.name} plays Daze! — but Three Kobolds get two free swings next turn instead of missing!`,
+          `${hero.name} plays Daze! (${card.suit}) — but Three Kobolds get two free swings next turn instead of missing!`,
         );
       } else {
         clash.monsterDazed = true;
         appendLog(
           state,
-          `${hero.name} plays Daze! — ${clash.monsterName} will miss next turn. ${hero.name} plays again!`,
+          `${hero.name} plays Daze! (${card.suit}) — ${clash.monsterName} will miss next turn. ${hero.name} plays again!`,
         );
       }
       again = true;
@@ -1339,12 +1513,12 @@ function resolveHeroCardPlay(state, hero, card, wildSuit, playOpts = {}) {
       }
       if (clash.isBoss && (clash.fighters?.length || 1) > 1) {
         clash.turnOrderDir = (clash.turnOrderDir || 1) * -1;
-        appendLog(state, `Bounce Back! flips Boss table turn order (${clash.turnOrderDir > 0 ? 'clockwise' : 'counter-clockwise'}).`);
+        appendLog(state, `Bounce Back! (${card.suit}) flips Boss table turn order (${clash.turnOrderDir > 0 ? 'clockwise' : 'counter-clockwise'}).`);
       }
-      appendLog(state, `${hero.name} Bounce Back! — reflects 1 Dmg (${clash.monsterName} at ${clash.monsterHp} HP).`);
+      appendLog(state, `${hero.name} Bounce Back! (${card.suit}) — reflects 1 Dmg (${clash.monsterName} at ${clash.monsterHp} HP).`);
     } else if (card.kind === 'tuckered') {
       damageMonster(state, hero, 2 + themeSparkBonus(state.themeId, card), card, { direct: true, ignoreArmor: gritPierces });
-      appendLog(state, `${hero.name} Tuckered Out! (+2) — ${clash.monsterName} takes 2 direct Dmg (${clash.monsterHp} HP).`);
+      appendLog(state, `${hero.name} Tuckered Out! (${card.suit}) (+2) — ${clash.monsterName} takes 2 direct Dmg (${clash.monsterHp} HP).`);
       // G-24 Tick-Tock lantern
       if (hero.belt?.some((b) => (b.gearId || b.id) === 'G-24')) {
         drawAction(state, hero);
@@ -1474,6 +1648,25 @@ function damageMonster(state, hero, amount, card, opts = {}) {
   }
 
   clash.monsterHp = Math.max(0, clash.monsterHp - Math.max(0, dmg));
+  maybeEnrageBoss(state);
+}
+
+function maybeEnrageBoss(state) {
+  const clash = state.clash;
+  if (
+    clash?.isBoss &&
+    !clash.enraged &&
+    clash.monsterHp > 0 &&
+    (clash.fighters?.length || 1) >= (RULES.bossEnrageHalfHpPartyMin ?? 3) &&
+    clash.monsterHp <= Math.floor(clash.monsterMaxHp / 2)
+  ) {
+    clash.enraged = true;
+    clash.bossEvery = 1;
+    appendLog(
+      state,
+      `Boss Enraged! ${clash.monsterName} drops to ${clash.monsterHp}/${clash.monsterMaxHp} HP and now acts after every Hero turn!`,
+    );
+  }
 }
 
 function resolveMonsterCardPlay(state, hero, card) {
@@ -1488,18 +1681,18 @@ function resolveMonsterCardPlay(state, hero, card) {
     if (card.kind === 'daze') {
       if (clash.traitId === 'three-way-team') {
         clash.pendingKoboldSwings = 2;
-        appendLog(state, `${clash.monsterName} plays Daze! — Three-Way Team queues two free swings (won't miss).`);
+        appendLog(state, `${clash.monsterName} plays Daze! (${card.suit}) — Three-Way Team queues two free swings (won't miss).`);
       } else {
         clash.heroDazed = true;
-        appendLog(state, `${clash.monsterName} plays Daze! — ${hero.name} will miss next turn.`);
+        appendLog(state, `${clash.monsterName} plays Daze! (${card.suit}) — ${hero.name} will miss next turn.`);
       }
     } else if (card.kind === 'bounce') {
       let dmg = 1 + themeSparkBonus(state.themeId, card);
       hurtHero(state, hero, dmg, card);
-      appendLog(state, `${clash.monsterName} Bounce Back!`);
+      appendLog(state, `${clash.monsterName} Bounce Back! (${card.suit})`);
     } else if (card.kind === 'tuckered') {
       addCramp(state, hero, 2);
-      appendLog(state, `${clash.monsterName} Tuckered Out! — ${hero.name} gains 2 Cramp!`);
+      appendLog(state, `${clash.monsterName} Tuckered Out! (${card.suit}) — ${hero.name} gains 2 Cramp!`);
     }
   } else {
     const kind = classifyPlay(effRank, clash);
@@ -1597,9 +1790,9 @@ function resolveDesperation(state, hero, action = {}) {
 
   const heroSuit = action.chosenSuit || hero.preferredSuit || 'brawn';
   const dealerSuit = action.dealerSuit || ['brawn', 'grit', 'zip', 'spark'][Math.floor(Math.random() * 4)];
-  const baseId = card.id?.replace(/-.*/, '') || card.id;
+  const baseId = card.id?.match(/^D-\d+/)?.[0] || card.id;
 
-  // B-02 Theatrical Encore (rules_01: Messy Desperation only, max once per round)
+  // B-02 Theatrical Encore (rules_09: any Desperation, max once per round)
   if (clash.traitId === 'theatrical-encore') {
     const tierOk = !RULES.theatricalEncoreMessyOnly || card.tier === 'messy';
     const capOk = !RULES.theatricalEncoreMaxPerRound || !clash.encoreUsedThisRound;
@@ -1639,11 +1832,11 @@ function resolveDesperation(state, hero, action = {}) {
       break;
     case 'D-08':
     case 'D-09': // Tangled Shoelaces
-      addCramp(state, hero, 1);
       if (hero.hand.length) {
         const i = Math.floor(Math.random() * hero.hand.length);
         discardToAction(state, hero.hand.splice(i, 1)[0]);
       }
+      addCramp(state, hero, 1);
       clash.activeRank = 1;
       drawTwist(state, 'Messy Desperation');
       break;
@@ -1719,7 +1912,7 @@ function resolveDesperation(state, hero, action = {}) {
       if (item) {
         // remove from loot if pulled from filter view
         state.decks.loot = (state.decks.loot || []).filter((c) => c.id !== item.id);
-        grantLootToHero(state, hero, item);
+        grantLootToHero(state, hero, item, clash.heroPlayerId);
         appendLog(state, `${hero.name} finds ${item.name} in a pocket!`);
       }
       clash.activeSuit = heroSuit;
@@ -1732,6 +1925,7 @@ function resolveDesperation(state, hero, action = {}) {
       if (card.tier === 'messy') drawTwist(state, 'Messy Desperation');
   }
 
+  maybeEnrageBoss(state);
   appendLog(
     state,
     `Desperation resolved — ${clash.monsterName} ${clash.monsterHp} HP, ${hero.name} ${hero.hp} HP. Active → ${clash.activeSuit || '?'} ${clash.activeRank ?? '?'}`,
@@ -1844,20 +2038,48 @@ function cleanupClash(state, { victory, wasBoss, downed } = {}) {
     if (fighter.offhand) fighter.offhand.tapped = false;
     if (fighter.armor) fighter.armor.tapped = false;
   }
-  if (victory && tile) tile.cleared = true;
+  if (victory && tile) {
+    tile.cleared = true;
+    tile.lurkingMonster = null;
+  } else if (!victory && tile && !clash.isBoss && clash.monsterHp > 0) {
+    tile.lurkingMonster = {
+      id: clash.monsterId,
+      name: clash.monsterName,
+      hp: clash.monsterHp,
+      maxHp: clash.monsterMaxHp,
+      cunning: clash.cunning,
+      baseDmg: clash.baseDmg,
+      trait: clash.trait,
+      traitId: clash.traitId,
+      loot: clash.lootText,
+    };
+    tile.cleared = false;
+  }
   const bossWin = Boolean(wasBoss ?? clash.isBoss) && victory;
   state.clash = null;
   state.phase = 'exploring';
   if (bossWin) {
     unlockStairs(state, 'Floor Boss defeated — Shiny Basement Key found!');
   }
-  if (!downed) {
-    state.explorationActionsLeft = 0;
-    endHeroExplorationTurn(state);
-  } else {
-    state.explorationActionsLeft = 0;
-    endHeroExplorationTurn(state);
+  if (!victory && allHeroesDowned(state)) {
+    triggerDefeat(state);
+    return;
   }
+  state.explorationActionsLeft = 0;
+  endHeroExplorationTurn(state);
+}
+
+function allHeroesDowned(state) {
+  const heroes = Object.values(state.heroes || {});
+  return heroes.length > 0 && heroes.every((h) => Boolean(h.downed));
+}
+
+function triggerDefeat(state, reason = 'All Heroes are DOWNED — party wipe!') {
+  state.phase = 'defeat';
+  state.clash = null;
+  state.explorationActionsLeft = 0;
+  state.pending = null;
+  appendLog(state, reason);
 }
 
 function unlockStairs(state, reason) {
@@ -1923,17 +2145,29 @@ function finishFloor(state, reason) {
     hero.hand = hero.hand.filter((c) => !isCramp(c));
   }
   appendLog(state, reason);
-  appendLog(state, `Floor 1 complete! Heroes heal +${clearHeal} HP (checkpoint).`);
+  appendLog(state, `Floor ${state.floorNumber || 1} complete! Heroes heal +${clearHeal} HP (checkpoint).`);
 }
 
 function endHeroExplorationTurn(state) {
   if (!state.turnOrder.length) return;
   if (state.pending) return;
-  state.activeHeroIndex = (state.activeHeroIndex + 1) % state.turnOrder.length;
-  state.explorationActionsLeft = 2;
-  const nextId = state.turnOrder[state.activeHeroIndex];
-  const p = state.players.find((x) => x.id === nextId);
-  appendLog(state, `${p?.name || 'Hero'}'s turn — 2 Exploration Actions.`);
+  if (allHeroesDowned(state)) {
+    triggerDefeat(state);
+    return;
+  }
+  const n = state.turnOrder.length;
+  for (let step = 1; step <= n; step += 1) {
+    const idx = (state.activeHeroIndex + step) % n;
+    const nextId = state.turnOrder[idx];
+    if (!state.heroes[nextId]?.downed) {
+      state.activeHeroIndex = idx;
+      state.explorationActionsLeft = 2;
+      const p = state.players.find((x) => x.id === nextId);
+      appendLog(state, `${p?.name || 'Hero'}'s turn — 2 Exploration Actions.`);
+      return;
+    }
+  }
+  triggerDefeat(state);
 }
 
 function maybeEndExplore(state) {
@@ -1954,7 +2188,7 @@ function drawLoot(state, n) {
   return out;
 }
 
-function grantLootToHero(state, hero, loot) {
+function grantLootToHero(state, hero, loot, heroPlayerId = null) {
   const gearId = loot.gearId || String(loot.id || '').split('-')[0];
   const item = gearRuntimeFromId(gearId);
   item.name = item.name || loot.name;
@@ -1964,10 +2198,20 @@ function grantLootToHero(state, hero, loot) {
   else if (slot === 'armor') hero.armor = item;
   else if (slot === 'belt') {
     hero.belt = hero.belt || [];
-    hero.belt.push(item);
-    while (hero.belt.length > 2) {
-      const dropped = hero.belt.shift();
-      appendLog(state, `${hero.name}'s belt is full — drops ${dropped.name}.`);
+    if (hero.belt.length < 2) {
+      hero.belt.push(item);
+    } else {
+      const pid =
+        heroPlayerId ||
+        Object.keys(state.heroes || {}).find((k) => state.heroes[k] === hero) ||
+        state.turnOrder?.[state.activeHeroIndex];
+      state.pending = {
+        kind: 'belt-overflow',
+        heroPlayerId: pid,
+        newItem: item,
+        options: [...hero.belt, item],
+      };
+      appendLog(state, `${hero.name}'s belt is full (2/2) — choose 1 item to discard.`);
     }
   }
 }
@@ -1993,65 +2237,159 @@ function beginEventPrompt(state, heroPlayerId, tile) {
 function beginMerchantRoom(state, tile) {
   const card = state.decks.merchants?.length ? state.decks.merchants.shift() : null;
   tile.cleared = true;
-  if (!card) {
+  if (card) {
+    tile.merchant = { id: card.id, name: card.name, greeting: card.greeting, deals: card.deals };
+    appendLog(state, `${card.name} sets up shop here!`);
+  } else {
     appendLog(state, 'Merchant Cart room — no merchants left in deck.');
-    return;
   }
-  tile.merchant = { id: card.id, name: card.name, greeting: card.greeting, deals: card.deals };
-  appendLog(state, `${card.name} sets up shop here!`);
+  if (state.storyStack?.length) {
+    const entry = state.storyStack.shift();
+    const id = typeof entry === 'string' ? entry : entry.id;
+    const story = STORIES.find((s) => s.id === id);
+    if (story) {
+      tile.story = { ...story, part1Outcome: typeof entry === 'object' ? entry.outcome : 'helped' };
+      appendLog(state, `Story Callback: ${story.name}!`);
+    }
+  } else if (state.decks.stories?.length) {
+    tile.story = state.decks.stories.shift();
+    appendLog(state, `Story Encounter: ${tile.story.name}!`);
+  }
 }
 
-function applyEventChoice(state, hero, event, choice) {
+function rollStuntCheck(state, hero, { suits = ['brawn'], target = 4, discardCardId = null, reroll = true, forcedRoll = null, forcedRoll2 = null } = {}) {
+  let roll = Number.isInteger(forcedRoll) ? forcedRoll : 1 + Math.floor(Math.random() * 6);
+  let autoPass = false;
+  let bonus = 0;
+  if (hero.offhand?.id === 'G-08' && !hero.stuntGearUsed?.scarf) {
+    bonus += 1;
+    hero.stuntGearUsed = { ...hero.stuntGearUsed, scarf: true };
+    appendLog(state, `${hero.name} flutters the Checkered Picnic Scarf (+1 stunt).`);
+  }
+  if (hero.armor?.id === 'G-18' && suits.includes('zip')) {
+    bonus += 1;
+  }
+  if (discardCardId) {
+    const idx = (hero.hand || []).findIndex((c) => c.id === discardCardId);
+    if (idx >= 0) {
+      const discarded = hero.hand.splice(idx, 1)[0];
+      if (isWild(discarded)) autoPass = true;
+      else if (suits.includes(discarded.suit)) bonus += 2;
+      discardToAction(state, discarded);
+    }
+  }
+  let total = autoPass ? 99 : roll + bonus;
+  let success = autoPass || total >= target;
+  const suitLabel = suits.join('/');
+  appendLog(
+    state,
+    autoPass
+      ? `${hero.name} stunt (${suitLabel} ${target}+): Heroic Wild! automatic pass.`
+      : `${hero.name} stunt (${suitLabel} ${target}+): rolled ${roll}${bonus ? `+${bonus}` : ''} = ${total} → ${success ? 'SUCCESS' : 'FAIL'}.`,
+  );
+  if (!success && hero.offhand?.id === 'G-11' && !hero.stuntGearUsed?.kaleidoscope && reroll) {
+    hero.stuntGearUsed = { ...hero.stuntGearUsed, kaleidoscope: true };
+    roll = Number.isInteger(forcedRoll2) ? forcedRoll2 : 1 + Math.floor(Math.random() * 6);
+    total = roll + bonus;
+    success = total >= target;
+    appendLog(state, `Kaleidoscope reroll: ${roll}${bonus ? `+${bonus}` : ''} = ${total} → ${success ? 'SUCCESS' : 'FAIL'}.`);
+  }
+  return { success, total, roll };
+}
+
+function applyEventChoice(state, hero, event, choice, action = {}, heroPid = null) {
   const id = event.id;
   appendLog(state, `${hero.name} picks ${choice.toUpperCase()} on ${event.title}.`);
-  // Structured outcomes from dungeon_floor1_2d5d.md (simplified digital adjudication)
   const bootsIgnore = hero.armor?.id === 'G-18';
+  const stuntOpts = {
+    discardCardId: action.discardCardId || null,
+    reroll: action.reroll !== false,
+    forcedRoll: action.forcedRoll,
+    forcedRoll2: action.forcedRoll2,
+  };
+  const applyBananaWipeout = () => {
+    if (bootsIgnore) {
+      appendLog(state, 'Bouncy Rubber Boots ignore 1 trap damage!');
+      hero.hp = Math.max(0, hero.hp - 1);
+    } else {
+      hero.hp = Math.max(0, hero.hp - 2);
+    }
+    addCramp(state, hero, 1);
+    drawTwist(state, 'Trap mishap');
+  };
+  const applyFloorboardSplat = () => {
+    if (bootsIgnore) appendLog(state, 'Bouncy Rubber Boots ignore 1 trap damage!');
+    else hero.hp = Math.max(0, hero.hp - 1);
+    state.explorationActionsLeft = Math.max(0, state.explorationActionsLeft - 1);
+    appendLog(state, 'Splat! Next move is sticky (lost 1 leftover action as proxy).');
+    drawTwist(state, 'Trap mishap');
+  };
+
   if (id === 'E-01') {
-    if (choice === 'a') drawAction(state, hero);
-    else {
-      if (bootsIgnore) {
-        appendLog(state, 'Bouncy Rubber Boots ignore 1 trap damage!');
-        hero.hp = Math.max(0, hero.hp - 1);
-      } else {
-        hero.hp = Math.max(0, hero.hp - 2);
-      }
-      addCramp(state, hero, 1);
-      drawTwist(state, 'Trap mishap');
+    if (choice === 'a') {
+      const res = rollStuntCheck(state, hero, { ...stuntOpts, suits: ['zip'], target: 3 });
+      if (res.success) drawAction(state, hero);
+      else applyBananaWipeout();
+    } else {
+      applyBananaWipeout();
     }
   } else if (id === 'E-02') {
-    if (choice !== 'a') {
-      if (bootsIgnore) appendLog(state, 'Bouncy Rubber Boots ignore 1 trap damage!');
-      else hero.hp = Math.max(0, hero.hp - 1);
-      state.explorationActionsLeft = Math.max(0, state.explorationActionsLeft - 1);
-      appendLog(state, 'Splat! Next move is sticky (lost 1 leftover action as proxy).');
-      drawTwist(state, 'Trap mishap');
+    if (choice === 'a') {
+      const res = rollStuntCheck(state, hero, { ...stuntOpts, suits: ['grit'], target: 4 });
+      if (!res.success) applyFloorboardSplat();
+    } else {
+      applyFloorboardSplat();
     }
   } else if (id === 'E-03') {
     if (choice === 'a') {
       hero.hp = Math.min(hero.maxHp, hero.hp + 2);
       drawAction(state, hero);
     } else {
-      const hidden = state.map.tiles.find((t) => !t.faceUp);
-      if (hidden) appendLog(state, `Mirror peek: a face-down room is ${hidden.name} (${hidden.kind}).`);
+      const res = rollStuntCheck(state, hero, { ...stuntOpts, suits: ['spark'], target: 3 });
+      if (res.success) {
+        const hidden = state.map.tiles.find((t) => !t.faceUp);
+        if (hidden) appendLog(state, `Mirror peek: a face-down room is ${hidden.name} (${hidden.kind}).`);
+      } else {
+        drawTwist(state, 'Mirror smudge');
+      }
     }
   } else if (id === 'E-04') {
-    if (choice === 'a') hero.hp = Math.min(hero.maxHp, hero.hp + 2);
-    else {
-      const item = drawLoot(state, 1)[0];
-      if (item) grantLootToHero(state, hero, item);
-      else {
+    if (choice === 'a') {
+      hero.hp = Math.min(hero.maxHp, hero.hp + 2);
+    } else {
+      const res = rollStuntCheck(state, hero, { ...stuntOpts, suits: ['spark'], target: 4 });
+      if (res.success) {
+        const beltIdx = (state.decks.loot || []).findIndex((c) => c.slot === 'belt');
+        const item = beltIdx >= 0 ? state.decks.loot.splice(beltIdx, 1)[0] : gearRuntimeFromId('G-27');
+        grantLootToHero(state, hero, item, heroPid);
+        appendLog(state, `${hero.name} brews ${item.name}!`);
+      } else {
         hero.hp = Math.max(0, hero.hp - 1);
         drawTwist(state, 'Soda mix mishap');
       }
     }
   } else if (id === 'E-05') {
     if (choice === 'a') {
-      const item = drawLoot(state, 1)[0];
-      if (item) grantLootToHero(state, hero, item);
-    } else drawTwist(state, 'Awkward humming');
+      const res = rollStuntCheck(state, hero, { ...stuntOpts, suits: ['zip', 'brawn'], target: 4 });
+      if (res.success) {
+        const item = drawLoot(state, 1)[0];
+        if (item) grantLootToHero(state, hero, item, heroPid);
+      } else {
+        drawTwist(state, 'Locked chest mishap');
+      }
+    } else {
+      drawTwist(state, 'Awkward humming');
+    }
   } else if (id === 'E-06') {
-    if (choice === 'a') drawAction(state, hero);
-    else drawTwist(state, 'Gargoyle bell rings');
+    if (choice === 'a') {
+      const res = rollStuntCheck(state, hero, { ...stuntOpts, suits: ['zip'], target: 3 });
+      if (res.success) drawAction(state, hero);
+      else drawTwist(state, 'Gargoyle bell rings');
+    } else {
+      const res = rollStuntCheck(state, hero, { ...stuntOpts, suits: ['grit'], target: 4 });
+      if (res.success) appendLog(state, `${hero.name} sneaks past the gargoyle quietly.`);
+      else drawTwist(state, 'Gargoyle bell rings');
+    }
   }
   if (hero.hp <= 0) {
     if (!trySecondWind(state, hero)) {
@@ -2060,23 +2398,293 @@ function applyEventChoice(state, hero, event, choice) {
       for (const c of hero.hand) discardToAction(state, c);
       hero.hand = [];
       appendLog(state, `${hero.name} collapses from the hazard!`);
+      if (allHeroesDowned(state)) {
+        triggerDefeat(state);
+      }
     }
+  }
+}
+
+function executeMerchantDeal(state, hero, playerName, tile, action, heroPid) {
+  const deal = action.deal || 'trade-gear';
+  if (deal === 'trade-gear') {
+    let traded = null;
+    const beltIdx = action.beltIndex !== undefined && action.beltIndex !== null ? Number(action.beltIndex) : -1;
+    if (Number.isInteger(beltIdx) && beltIdx >= 0 && hero.belt?.[beltIdx]) {
+      traded = hero.belt.splice(beltIdx, 1)[0];
+    } else if (action.slot && ['weapon', 'offhand', 'armor'].includes(action.slot) && hero[action.slot]) {
+      traded = hero[action.slot];
+      hero[action.slot] = null;
+    } else {
+      return { ok: false, error: 'Pick a belt item or equipped gear to trade' };
+    }
+    const drawn = drawLoot(state, 2);
+    if (!drawn.length) {
+      if (action.slot) hero[action.slot] = traded;
+      else hero.belt.push(traded);
+      return { ok: false, error: 'Loot deck empty' };
+    }
+    state.explorationActionsLeft -= 1;
+    state.pending = {
+      kind: 'vault',
+      heroPlayerId: heroPid,
+      tileKey: tile.key,
+      options: drawn,
+      tradedName: traded.name,
+    };
+    appendLog(state, `${playerName} trades ${traded.name} with ${tile.merchant.name} — pick 1 loot.`);
+    return { ok: true };
+  }
+
+  if (deal === 'bundle-deal') {
+    if ((hero.belt?.length || 0) < 2) {
+      return { ok: false, error: 'Need 2 Belt Consumables for Bundle Deal' };
+    }
+    const t1 = hero.belt.splice(0, 2);
+    const tier1Idx = (state.decks.loot || []).findIndex((c) => c.slot !== 'belt');
+    const item = tier1Idx >= 0 ? state.decks.loot.splice(tier1Idx, 1)[0] : drawLoot(state, 1)[0];
+    if (!item) {
+      hero.belt.push(...t1);
+      return { ok: false, error: 'Loot deck empty' };
+    }
+    state.explorationActionsLeft -= 1;
+    grantLootToHero(state, hero, item, heroPid);
+    appendLog(state, `${playerName} trades 2 Belt items for ${item.name} with ${tile.merchant.name}!`);
+    return { ok: true };
+  }
+
+  if (deal === 'brew-swap') {
+    let traded = null;
+    const beltIdx = action.beltIndex !== undefined && action.beltIndex !== null ? Number(action.beltIndex) : -1;
+    if (Number.isInteger(beltIdx) && beltIdx >= 0 && hero.belt?.[beltIdx]) {
+      traded = hero.belt.splice(beltIdx, 1)[0];
+    } else if (action.slot && ['weapon', 'offhand', 'armor'].includes(action.slot) && hero[action.slot]) {
+      traded = hero[action.slot];
+      hero[action.slot] = null;
+    } else {
+      return { ok: false, error: 'Pick a Gear or Belt item for Brew Swap' };
+    }
+    const rewardId = action.rewardId === 'G-25' ? 'G-25' : 'G-27';
+    const reward = gearRuntimeFromId(rewardId);
+    state.explorationActionsLeft -= 1;
+    grantLootToHero(state, hero, reward, heroPid);
+    appendLog(state, `${playerName} swaps ${traded.name} for ${reward.name} with ${tile.merchant.name}!`);
+    return { ok: true };
+  }
+
+  if (deal === 'card-trade') {
+    const eligible = (hero.hand || []).filter((c) => !isCramp(c) && (c.suit === 'grit' || c.suit === 'spark'));
+    if (eligible.length < 2) {
+      return { ok: false, error: 'Need 2 Grit or Spark Action cards for Card Trade' };
+    }
+    const chosenIds = Array.isArray(action.cardIds) && action.cardIds.length >= 2
+      ? action.cardIds.slice(0, 2)
+      : eligible.slice(0, 2).map((c) => c.id);
+    const idSet = new Set(chosenIds);
+    const discarded = [];
+    hero.hand = hero.hand.filter((c) => {
+      if (idSet.has(c.id) && discarded.length < 2) {
+        discarded.push(c);
+        return false;
+      }
+      return true;
+    });
+    for (const c of discarded) discardToAction(state, c);
+    state.explorationActionsLeft -= 1;
+    hero.hp = Math.min(hero.maxHp, hero.hp + 3);
+    appendLog(state, `${playerName} trades 2 Grit/Spark cards at ${tile.merchant.name} — heals +3 HP (${hero.hp}).`);
+    return { ok: true };
+  }
+
+  return { ok: false, error: `Unknown merchant deal ${deal}` };
+}
+
+function applyStoryChoice(state, hero, story, choice, tileKey, action = {}, heroPid = null) {
+  appendLog(state, `${hero.name} resolves ${story.name} (${choice.toUpperCase()}).`);
+  const tile = state.map.tiles.find((t) => t.key === tileKey);
+  if (tile) tile.storyResolved = true;
+  state.storyStack = state.storyStack || [];
+
+  if (story.id === 'S-01A') {
+    if (choice === 'a') {
+      if (hero.weapon) {
+        appendLog(state, `${hero.name} gives ${hero.weapon.name} to Pip.`);
+        hero.weapon = null;
+        const starters = gearByTier(0).filter((g) => g.slot === 'weapon');
+        if (starters.length) {
+          const pick = starters[Math.floor(Math.random() * starters.length)];
+          grantLootToHero(state, hero, { gearId: pick.id, name: pick.name, slot: pick.slot }, heroPid);
+          appendLog(state, `Pip gifts a replacement starter: ${pick.name}.`);
+        }
+      } else if (hero.armor) {
+        appendLog(state, `${hero.name} gives ${hero.armor.name} to Pip.`);
+        hero.armor = null;
+        const starters = gearByTier(0).filter((g) => g.slot === 'armor');
+        if (starters.length) {
+          const pick = starters[Math.floor(Math.random() * starters.length)];
+          grantLootToHero(state, hero, { gearId: pick.id, name: pick.name, slot: pick.slot }, heroPid);
+          appendLog(state, `Pip gifts a replacement starter: ${pick.name}.`);
+        }
+      }
+      state.storyStack.push({ id: 'S-01B', outcome: 'helped' });
+      appendLog(state, `Tucked S-01B onto the Next-Floor Story Stack (Helped).`);
+    } else {
+      const item = drawLoot(state, 1)[0];
+      if (item) grantLootToHero(state, hero, item, heroPid);
+      state.storyStack.push({ id: 'S-01B', outcome: 'grumpy' });
+      appendLog(state, `Tucked S-01B onto the Next-Floor Story Stack (Grumpy!).`);
+    }
+  } else if (story.id === 'S-02A') {
+    if (choice === 'a') {
+      if (hero.belt?.length) {
+        hero.belt.pop();
+        state.storyStack.push({ id: 'S-02B', outcome: 'helped' });
+        appendLog(state, `Tucked S-02B onto the Next-Floor Story Stack.`);
+      } else {
+        const res = rollStuntCheck(state, hero, { suits: ['grit', 'zip'], target: 4, forcedRoll: action.forcedRoll });
+        if (res.success) {
+          state.storyStack.push({ id: 'S-02B', outcome: 'helped' });
+          appendLog(state, `Tucked S-02B onto the Next-Floor Story Stack.`);
+        } else {
+          drawTwist(state, 'Story stunt');
+        }
+      }
+    } else {
+      drawAction(state, hero);
+    }
+  } else if (story.id === 'S-03A') {
+    if (choice === 'a') {
+      if (hero.belt?.length) {
+        hero.belt.pop();
+      } else {
+        let removed = 0;
+        hero.hand = (hero.hand || []).filter((c) => {
+          if (!isCramp(c) && removed < 2) {
+            removed += 1;
+            discardToAction(state, c);
+            return false;
+          }
+          return true;
+        });
+      }
+      state.storyStack.push({ id: 'S-03B', outcome: 'friend' });
+      appendLog(state, `Tucked S-03B onto the Next-Floor Story Stack (Friend).`);
+    } else {
+      drawAction(state, hero);
+      state.storyStack.push({ id: 'S-03B', outcome: 'snubbed' });
+      appendLog(state, `Tucked S-03B onto the Next-Floor Story Stack (Snubbed).`);
+    }
+  } else if (story.id === 'S-01B') {
+    if (story.part1Outcome === 'grumpy') {
+      if (tile) {
+        startClash(state, heroPid || state.turnOrder[state.activeHeroIndex], tile, {
+          id: 'MON-BOT',
+          name: 'Clanky Helper Bot',
+          hp: 6,
+          cunning: 3,
+          baseDmg: 2,
+          trait: 'Grumpy Forge Guard!',
+          loot: 'Draw 1 Tier 1 Loot',
+        });
+      }
+    } else if (hero.weapon) {
+      hero.weapon.strike = (hero.weapon.strike || 1) + 1;
+      appendLog(state, `Master Pip reforges ${hero.weapon.name} (+1 Strike Dmg permanently)!`);
+    } else {
+      const tier2 = gearByTier(2).filter((g) => g.slot === 'weapon');
+      const pick = tier2[0];
+      if (pick) grantLootToHero(state, hero, { gearId: pick.id, name: pick.name, slot: pick.slot }, heroPid);
+    }
+  } else if (story.id === 'S-02B') {
+    const hidden = state.map.tiles.filter((t) => !t.faceUp).slice(0, 3);
+    for (const h of hidden) appendLog(state, `Barnacle's map reveals: ${h.name} (${h.kind}).`);
+    const beltPool = (state.decks.loot || []).filter((c) => c.slot === 'belt');
+    const item = beltPool[0] || drawLoot(state, 1)[0];
+    if (item) {
+      state.decks.loot = (state.decks.loot || []).filter((c) => c.id !== item.id);
+      grantLootToHero(state, hero, item, heroPid);
+    }
+  } else if (story.id === 'S-03B') {
+    if (story.part1Outcome === 'snubbed') {
+      if (hero.belt?.length) {
+        const lost = hero.belt.pop();
+        appendLog(state, `Sir Reginald confiscates ${lost.name}!`);
+      } else {
+        hero.hp = Math.max(0, hero.hp - 2);
+        appendLog(state, `Sir Reginald tuts sternly — ${hero.name} takes 2 Dmg.`);
+      }
+    } else {
+      const loot = drawLoot(state, 2);
+      for (const item of loot) grantLootToHero(state, hero, item, heroPid);
+    }
+  }
+}
+
+function relocateHeroAfterFlee(state, hero, fromKey) {
+  if (!hero || !fromKey) return;
+  const fromTile = state.map.tiles.find((t) => t.key === fromKey);
+  if (!fromTile) return;
+  const candidates = state.map.tiles.filter(
+    (t) =>
+      t.key !== fromTile.key &&
+      t.faceUp &&
+      adjacentOrthogonal(fromTile, t) &&
+      tilesConnect(fromTile, t) &&
+      !barrierBlocks(state, fromTile, t) &&
+      !t.lurkingMonster &&
+      (t.cleared || !['monster', 'boss'].includes(t.kind)),
+  );
+  if (candidates.length) {
+    const dest = candidates[0];
+    hero.roomKey = dest.key;
+    appendLog(state, `${hero.name} retreats to ${dest.name}.`);
   }
 }
 
 function drawTwist(state, reason) {
   state.decks.twistHand = state.decks.twistHand || [];
+  const cleanReason =
+    reason && !/^dealer draws (?:a )?twist$/i.test(String(reason).trim()) ? reason : '';
   if (state.decks.twistHand.length >= 3) {
-    appendLog(state, `${reason} — Twist hand already at max (3).`);
+    appendLog(state, `${cleanReason ? `${cleanReason} — ` : ''}Twist hand already at max (3).`);
     return;
   }
   if (!state.decks.twists?.length) {
-    appendLog(state, `${reason} — Twist deck empty.`);
+    appendLog(state, `${cleanReason ? `${cleanReason} — ` : ''}Twist deck empty.`);
     return;
   }
   const t = state.decks.twists.shift();
   state.decks.twistHand.push(t);
-  appendLog(state, `${reason}: Dealer draws Twist «${t.name}».`);
+  appendLog(state, `${cleanReason ? `${cleanReason}: ` : ''}Dealer draws Twist «${t.name}».`);
+}
+
+export function canPlayTwist(state, twist) {
+  if (!twist) return { ok: false, reason: 'Missing Twist' };
+  if (/Boss Espresso/i.test(twist.name)) {
+    if (state.phase !== 'clash' || !state.clash) {
+      return { ok: false, reason: 'Play during an active Clash' };
+    }
+  } else if (/Musical Rooms/i.test(twist.name)) {
+    const hidden = (state.map?.tiles || []).filter((t) => !t.faceUp);
+    if (hidden.length < 2) {
+      return { ok: false, reason: 'Need at least 2 face-down rooms to swap' };
+    }
+  } else if (/Surprise Intern/i.test(twist.name)) {
+    const candidates = (state.map?.tiles || []).filter(
+      (t) => t.faceUp && t.cleared && t.kind !== 'entrance' && t.kind !== 'stairs' && !t.lurkingMonster,
+    );
+    if (!candidates.length) {
+      return { ok: false, reason: 'No cleared empty room available' };
+    }
+  } else if (/Hall Monitor/i.test(twist.name)) {
+    const lairs = (state.map?.tiles || []).filter(
+      (t) => t.faceUp && !t.cleared && (t.kind === 'monster' || t.lurkingMonster),
+    );
+    if (!lairs.length) {
+      return { ok: false, reason: 'No unengaged revealed monster to slide' };
+    }
+  }
+  return { ok: true };
 }
 
 function applyTwist(state, twist, action = {}) {
@@ -2239,7 +2847,9 @@ function applyStuntSuccess(state, hero, heroPid, action = {}) {
       if (Number.isInteger(beltIdx) && hero.belt?.[beltIdx]) {
         const paid = hero.belt.splice(beltIdx, 1)[0];
         appendLog(state, `${hero.name} bribes with ${paid.name} — clash ends peacefully.`);
+        const fleeFrom = state.clash.roomKey;
         cleanupClash(state, { victory: false });
+        relocateHeroAfterFlee(state, hero, fleeFrom);
       } else {
         appendLog(state, 'Bribe stunt needs a belt consumable.');
       }

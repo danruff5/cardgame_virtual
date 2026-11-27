@@ -91,6 +91,7 @@ async function main() {
             sessionId: opts.session,
             steps: Number(opts.steps || 15),
             autoModals: Boolean(opts['auto-modals']),
+            targetFloors: Number(opts['target-floors'] || 1),
           }),
           null,
           2,

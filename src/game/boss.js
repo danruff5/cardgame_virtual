@@ -50,7 +50,7 @@ export function bossGather(state) {
     boss,
     waiting,
     heroIds,
-    projectedHp: bossHp(boss.id, Math.max(1, heroIds.length)),
+    projectedHp: bossHp(boss.id, Math.max(1, heroIds.length), state?.floorNumber || 1),
   };
 }
 

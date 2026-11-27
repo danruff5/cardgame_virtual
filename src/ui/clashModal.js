@@ -23,6 +23,7 @@ import {
   closingClashState,
 } from './clashMoves.js';
 import { captureFly, playFly, playCleanupSweep, prefersReducedMotion } from './clashAnim.js';
+import { hideCardTip } from './cardTipPortal.js';
 
 const NO_FX = {
   heroDelta: 0,
@@ -162,6 +163,7 @@ export function clashPlayOptionsFor(hero) {
 }
 
 function cardIsLegal(c, clash, playOpts, hasCookie) {
+  if (clash?.heroDazed) return false;
   if (clash?.twinRank != null) {
     return Boolean(c && !isCramp(c) && !isSpecial(c) && !isWild(c) && Number(c.rank) === clash.twinRank);
   }
@@ -436,7 +438,13 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
       ${fx.error ? `<p class="clash-error" role="alert">${esc(fx.error)}</p>` : ''}
       ${
         canPlay
-          ? twinPending
+          ? clash.heroDazed
+            ? `
+        <button type="button" class="primary" id="btn-clash-dazed-skip">Dazed — Skip Turn</button>
+        ${healButtonsHtml}
+        <p class="muted clash-tray-note">You are Dazed and miss this combat turn.</p>
+      `
+            : twinPending
             ? `
         <button type="button" class="primary" id="btn-clash-end-twin">Done with Twin Knives (skip 2nd Rank ${clash.twinRank})</button>
         ${healButtonsHtml}
@@ -447,8 +455,10 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
         <button type="button" id="btn-clash-cramp" ${fighterHand.some((c) => isCramp(c)) ? '' : 'disabled'}>Stretch (discard ≤2 Cramp!)</button>
         ${
           hasCookie
-            ? `<label class="muted clash-check">
-                <input type="checkbox" id="chk-cookie-parry" /> Tap Cookie-Tin as Parry
+            ? `<label class="clash-check" for="chk-cookie-parry">
+                <input type="checkbox" id="chk-cookie-parry" />
+                <span class="clash-check-box" aria-hidden="true"></span>
+                <span class="clash-check-text">Tap Cookie-Tin as Parry</span>
               </label>`
             : ''
         }
@@ -513,7 +523,7 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
         }
       </div>
       ${showHand ? '' : `<p class="muted clash-hand-private">${esc(hero?.name || 'Hero')}'s hand is private.</p>`}
-      <div class="clash-player-hand" data-fly="z:seat:${escAttr(mainId)}">
+      <div class="clash-player-hand ${fighterHand.length >= 7 ? 'is-crowded' : ''}" data-fly="z:seat:${escAttr(mainId)}">
         ${handCards || '<span class="muted">Empty hand</span>'}
       </div>
     </div>`;
@@ -533,6 +543,7 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
   const monsterChips = [
     `<span class="clash-chip">Cunning ${clash.cunning ?? '?'}</span>`,
     `<span class="clash-chip">Dmg ${clash.baseDmg ?? 1}</span>`,
+    clash.enraged ? '<span class="clash-chip is-warn">Enraged!</span>' : '',
     clash.monsterDazed ? '<span class="clash-chip is-warn">Dazed</span>' : '',
     clash.pendingKoboldSwings > 0
       ? `<span class="clash-chip is-warn">${clash.pendingKoboldSwings} free swings</span>`
@@ -561,6 +572,35 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
     fx.hitFlash ? 'clash-screen-hit' : '',
     closing ? `is-closing outcome-${closing}` : '',
   ].join(' ');
+
+  const beltOverflowHtml = (() => {
+    if (closing || state.phase !== 'clash' || state.pending?.kind !== 'belt-overflow') return '';
+    const pending = state.pending;
+    const mine = isDealer || pending.heroPlayerId === meId;
+    const targetHero = state.heroes?.[pending.heroPlayerId];
+    const opts = (pending.options || [])
+      .map(
+        (item, i) => `
+          <div class="vault-option">
+            <div class="vault-option-card">${renderGearChip(item.gearId || item.id, { size: 'hand' })}</div>
+            <div class="vault-option-info">
+              <strong>${esc(item.name)}</strong>
+              <button type="button" data-belt-discard="${i}" ${mine ? '' : 'disabled'}>Discard ${esc(item.name)}</button>
+            </div>
+          </div>`,
+      )
+      .join('');
+    return `
+      <div class="table-prompt-overlay is-clash-prompt" role="dialog" aria-label="Belt full">
+        <div class="table-prompt-card is-vault">
+          <div class="table-prompt-head">
+            <h3>Belt Full (2/2) — Discard 1</h3>
+            <span class="muted">${esc(targetHero?.name || 'Hero')}</span>
+          </div>
+          <div class="vault-options">${opts}</div>
+        </div>
+      </div>`;
+  })();
 
   return `
     <div class="${backdropClasses}" role="dialog" aria-modal="true" aria-label="Clash & Chain">
@@ -618,7 +658,7 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
                   <div class="clash-active-pill" style="--active:${activeColor}">
                     <span class="muted">Active</span>
                     <strong>${esc(activeMeta?.label || clash.activeSuit || '—')} ${clash.activeRank ?? ''}</strong>
-                    <span class="muted">· pile ${clash.pile?.length ?? 0}</span>
+                    <span class="muted">· pile ${clash.pileCount ?? clash.pile?.length ?? 0}</span>
                   </div>
                   ${
                     fx.turnChanged && !closing
@@ -670,6 +710,7 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
                       hp: clash.monsterHp,
                       maxHp: clash.monsterMaxHp,
                       isBoss: clash.isBoss,
+                      floorNumber: state.floorNumber || 1,
                     })}
                   </div>
                 </div>
@@ -709,10 +750,13 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
           </div>
         </div>
       </div>
-    </div>`;
+    </div>${beltOverflowHtml}`;
 }
 
 function wireLogCardHovers(root = document) {
+  if (typeof document !== 'undefined' && document.body?.classList?.contains('has-tip-portal')) {
+    return;
+  }
   root.querySelectorAll('.log-card-mention').forEach((el) => {
     const tip = el.querySelector('.card-hover-tip');
     if (!tip) return;
@@ -806,6 +850,9 @@ export function wireClashModal(room, session) {
   document.getElementById('btn-clash-end-twin')?.addEventListener('click', () => {
     room.dispatch({ type: 'clash-end-twin' });
   });
+  document.getElementById('btn-clash-dazed-skip')?.addEventListener('click', () => {
+    room.dispatch({ type: 'clash-skip-dazed' });
+  });
   document.querySelectorAll('[data-clash-card]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const cardId = btn.getAttribute('data-clash-card');
@@ -855,6 +902,14 @@ export function wireClashModal(room, session) {
       room.dispatch({ type: 'join-boss-clash', playerId: btn.getAttribute('data-clash-join') });
     });
   });
+  document.querySelectorAll('#clash-layer [data-belt-discard]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      room.dispatch({
+        type: 'resolve-pending',
+        discardIndex: Number(btn.getAttribute('data-belt-discard')),
+      });
+    });
+  });
   wireLogCardHovers();
 }
 
@@ -874,6 +929,7 @@ function clashLayer() {
 }
 
 function teardownClashModal(session, layer) {
+  hideCardTip();
   const ctl = session.clashCtl;
   if (ctl?.timer) clearTimeout(ctl.timer);
   Object.assign(ctl, { open: false, closing: false, key: null, snap: null, view: null, timer: null });
@@ -918,6 +974,7 @@ export function syncClashModal({ session, room, state, isDealer, meId }) {
       desperation: moves.some((m) => m.type === 'desperation'),
       error: session.error,
     });
+    hideCardTip();
     wireClashModal(room, session);
     playFly(layer, before, moves, { baseDelay: sameClash ? 0 : 320 });
 

@@ -27,6 +27,7 @@ export class PeerRoom {
     this.busy = false;
     this.telemetry = null;
     this._unloadHandler = null;
+    this._chunkBuffers = new Map();
   }
 
   _status(msg) {
@@ -83,6 +84,7 @@ export class PeerRoom {
       source: params?.get('source') || 'ui-playtest',
       batchId: params?.get('batch') || null,
       testerLabel: params?.get('tester') || null,
+      targetFloors: Math.max(1, Number(params?.get('targetFloors') || 1)),
     });
     this.telemetry.onState(null, this.state, { type: 'host-open' });
     if (typeof window !== 'undefined') {
@@ -136,9 +138,9 @@ export class PeerRoom {
       );
       conn.on('data', (msg) => {
         this._onClientMessage(msg);
-        if (msg?.type === 'state' || (msg?.type === 'welcome' && msg.state)) {
+        if (this.state || msg?.type === 'state' || (msg?.type === 'welcome' && msg.state)) {
           clearTimeout(timer);
-          resolve(msg.state || this.state);
+          resolve(msg?.state || this.state);
         }
       });
       conn.on('close', () => {
@@ -249,16 +251,60 @@ export class PeerRoom {
     });
   }
 
+  _sendPayload(conn, msg) {
+    const raw = JSON.stringify(msg);
+    if (raw.length <= 12000) {
+      conn.send(msg);
+      return;
+    }
+    const chunkSize = 10000;
+    const total = Math.ceil(raw.length / chunkSize);
+    const id = uid('chk');
+    for (let index = 0; index < total; index += 1) {
+      conn.send({
+        type: 'chunk',
+        id,
+        index,
+        total,
+        data: raw.slice(index * chunkSize, (index + 1) * chunkSize),
+      });
+    }
+  }
+
+  _unwrapChunk(msg) {
+    if (!msg || typeof msg !== 'object') return null;
+    if (msg.type !== 'chunk') return msg;
+    const { id, index, total, data } = msg;
+    if (!id || !Number.isInteger(index) || !Number.isInteger(total) || total < 1) return null;
+    let entry = this._chunkBuffers.get(id);
+    if (!entry) {
+      entry = { total, parts: new Array(total), received: 0 };
+      this._chunkBuffers.set(id, entry);
+    }
+    if (entry.parts[index] === undefined) {
+      entry.parts[index] = data;
+      entry.received += 1;
+    }
+    if (entry.received < entry.total) return null;
+    this._chunkBuffers.delete(id);
+    try {
+      return JSON.parse(entry.parts.join(''));
+    } catch {
+      return null;
+    }
+  }
+
   _sendStateTo(conn, playerId) {
     if (!conn || !playerId || !this.state) return;
     try {
-      conn.send({ type: 'state', state: viewForPlayer(this.state, playerId) });
+      this._sendPayload(conn, { type: 'state', state: viewForPlayer(this.state, playerId) });
     } catch (err) {
       this._error(`Failed to sync state: ${err.message || err}`);
     }
   }
 
-  _onHostMessage(conn, msg) {
+  _onHostMessage(conn, rawMsg) {
+    const msg = this._unwrapChunk(rawMsg);
     if (!msg || typeof msg !== 'object') return;
 
     // Ensure this conn is tracked even if open raced
@@ -286,7 +332,7 @@ export class PeerRoom {
 
       const view = viewForPlayer(this.state, msg.playerId);
       // Bundle state in welcome so the joiner never depends only on broadcast map timing.
-      conn.send({
+      this._sendPayload(conn, {
         type: 'welcome',
         playerId: msg.playerId,
         role: 'hero',
@@ -310,7 +356,8 @@ export class PeerRoom {
     }
   }
 
-  _onClientMessage(msg) {
+  _onClientMessage(rawMsg) {
+    const msg = this._unwrapChunk(rawMsg);
     if (!msg || typeof msg !== 'object') return;
     if (msg.type === 'welcome') {
       this.playerId = msg.playerId || this.playerId;

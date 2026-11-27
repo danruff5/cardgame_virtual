@@ -195,6 +195,16 @@ export function clearAllCoachSeen() {
   writeSeen({ v: VERSION, tours: {} });
 }
 
+export function markAllToursSeen() {
+  const seen = readSeen();
+  const now = Date.now();
+  for (const t of COACH_TOURS) {
+    seen.tours[t.id] = now;
+  }
+  writeSeen(seen);
+  stopTour({ markSeen: true });
+}
+
 export function getActiveTour() {
   if (!active.tourId) return null;
   return COACH_TOURS.find((t) => t.id === active.tourId) || null;
@@ -443,7 +453,10 @@ export function renderCoachUi({ context, menuOpen }) {
         <h3 id="coach-tip-title">${escapeHtml(step.title)}</h3>
         <p>${escapeHtml(step.body)}</p>
         <div class="coach-tip-actions">
-          <button type="button" class="ghost" id="coach-skip">Skip</button>
+          <div class="row" style="margin:0;gap:0.35rem">
+            <button type="button" class="ghost" id="coach-skip">Skip</button>
+            <button type="button" class="ghost" id="coach-skip-all">Skip all tips</button>
+          </div>
           <div class="row" style="margin:0">
             <button type="button" id="coach-prev" ${stepNum <= 1 ? 'disabled' : ''}>Back</button>
             <button type="button" class="primary" id="coach-next">${stepNum >= stepTotal ? 'Got it' : 'Next'}</button>
@@ -558,9 +571,35 @@ function placeTip(rect, place, tipEl) {
     preferBottom();
   }
 
+  let finalTop = clamp(top, margin, maxTop);
+  let finalLeft = clamp(left, margin, maxLeft);
+
+  const handEl = typeof document !== 'undefined' ? document.querySelector('.clash-player-hand') : null;
+  const handRect = handEl?.getBoundingClientRect?.();
+  if (handRect && handRect.width > 0 && handRect.height > 0) {
+    const overlapsHand = (t, l) =>
+      l < handRect.right + 4 &&
+      l + tipW > handRect.left - 4 &&
+      t < handRect.bottom + 4 &&
+      t + tipH > handRect.top - 4;
+    if (overlapsHand(finalTop, finalLeft)) {
+      const candidates = [
+        { t: clamp(handRect.top - gap - tipH, margin, maxTop), l: finalLeft },
+        { t: finalTop, l: clamp(handRect.left - gap - tipW, margin, maxLeft) },
+        { t: finalTop, l: clamp(handRect.right + gap, margin, maxLeft) },
+        { t: clamp(handRect.bottom + gap, margin, maxTop), l: finalLeft },
+      ];
+      const clear = candidates.find((c) => !overlapsHand(c.t, c.l));
+      if (clear) {
+        finalTop = clear.t;
+        finalLeft = clear.l;
+      }
+    }
+  }
+
   return {
-    top: clamp(top, margin, maxTop),
-    left: clamp(left, margin, maxLeft),
+    top: finalTop,
+    left: finalLeft,
     maxWidth: tipW,
   };
 }
@@ -569,7 +608,31 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
+let targetAdvanceBound = false;
+
+function ensureTargetAdvanceListener() {
+  if (targetAdvanceBound || typeof document === 'undefined') return;
+  targetAdvanceBound = true;
+  document.addEventListener(
+    'click',
+    (e) => {
+      if (!active.tourId) return;
+      if (e.target?.closest?.('#coach-root')) return;
+      const step = getActiveStep();
+      if (!step?.selector) return;
+      const targetEl = e.target?.closest?.(step.selector);
+      if (targetEl) {
+        queueMicrotask(() => {
+          if (active.tourId) nextCoachStep();
+        });
+      }
+    },
+    true,
+  );
+}
+
 function wireCoachDom() {
+  ensureTargetAdvanceListener();
   document.getElementById('coach-help')?.addEventListener('click', () => {
     if (isCoachActive()) {
       stopTour({ markSeen: false });
@@ -599,6 +662,9 @@ function wireCoachDom() {
   });
   document.getElementById('coach-skip')?.addEventListener('click', () => {
     stopTour({ markSeen: true });
+  });
+  document.getElementById('coach-skip-all')?.addEventListener('click', () => {
+    markAllToursSeen();
   });
   document.getElementById('coach-next')?.addEventListener('click', () => {
     nextCoachStep();

@@ -65,7 +65,7 @@ export function mountMonitorView(rootEl) {
           <div class="monitor-kpi">
             <div class="monitor-kpi-label">Win / Loss</div>
             <div class="monitor-kpi-val">${bucket.wins}W / ${bucket.losses}L</div>
-            <div class="monitor-kpi-sub">Win rate: <strong>${bucket.winRatePct}%</strong> · Boss kill: ${bucket.bossDefeatRatePct}%</div>
+            <div class="monitor-kpi-sub">Win rate: <strong>${bucket.winRatePct}%</strong> · Avg floors: ${bucket.avgFloorsCleared ?? '—'}</div>
           </div>
           <div class="monitor-kpi">
             <div class="monitor-kpi-label">Skirmish Length</div>
@@ -164,6 +164,34 @@ export function mountMonitorView(rootEl) {
       )
       .join('');
 
+    const targetFloorRows = Object.entries(bucket?.byTargetFloors || {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(
+        ([k, v]) => `
+        <div class="monitor-bar-row">
+          <span><strong>${esc(k)}</strong> (${v.played} games)</span>
+          <div class="monitor-bar-track"><div class="monitor-bar-fill" style="width:${v.winRatePct}%"></div></div>
+          <span>${v.winRatePct}% W · ${v.avgFloorsCleared} fl</span>
+        </div>`,
+      )
+      .join('');
+
+    const perFloorRows = Object.entries(bucket?.byFloorNumber || {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(
+        ([k, v]) => `
+        <tr>
+          <td><strong>${esc(k)}</strong></td>
+          <td>${v.attempts}</td>
+          <td>${v.clearRatePct}%</td>
+          <td>${v.avgTurns}</td>
+          <td>${v.avgClashes}</td>
+          <td>${v.avgDesp}</td>
+          <td>${v.avgDowned}</td>
+        </tr>`,
+      )
+      .join('');
+
     const activeRows = activeList
       .map(
         (g) => `
@@ -172,6 +200,7 @@ export function mountMonitorView(rootEl) {
           <td>${esc(g.source)}</td>
           <td>${esc(g.batchId || '—')}</td>
           <td>${g.heroCount}P (${esc((g.heroIds || []).join(', '))})</td>
+          <td>F${g.currentFloor || 1}/${g.targetFloors || 1}</td>
           <td>${esc(g.phase)}</td>
           <td>${g.explorationTurns || 0}</td>
           <td>${g.clashesTotal || 0}</td>
@@ -189,6 +218,7 @@ export function mountMonitorView(rootEl) {
           <td>${esc(g.source)}</td>
           <td>${esc(g.batchId || '—')}</td>
           <td>${g.heroCount}P</td>
+          <td>${g.floorsCleared ?? 0}/${g.targetFloors || 1}</td>
           <td>${esc(g.bossId || '—')}</td>
           <td><span class="monitor-badge ${esc(g.effectiveStatus)}">${esc(g.effectiveStatus)}</span></td>
           <td>${g.explorationTurns || 0}</td>
@@ -251,13 +281,27 @@ export function mountMonitorView(rootEl) {
             ${heroRows || '<p class="muted">No hero data yet.</p>'}
           </div>
         </div>
+        <div class="monitor-card">
+          <h2>Multi-Floor Progression (1F / 2F / 3F &amp; Per-Floor Survival)</h2>
+          <div class="monitor-grid-2" style="margin-bottom:0">
+            <div>
+              ${targetFloorRows || '<p class="muted">No multi-floor data yet.</p>'}
+            </div>
+            <div class="monitor-table-wrap">
+              <table class="monitor-table">
+                <thead><tr><th>Floor</th><th>Attempts</th><th>Clear%</th><th>Turns</th><th>Clashes</th><th>Desp</th><th>Downs</th></tr></thead>
+                <tbody>${perFloorRows || '<tr><td colspan="7" class="muted">No floor history yet.</td></tr>'}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>
         <div class="monitor-grid-2">
           <div class="monitor-card">
             <h2>Active &amp; Lobby Games (${activeList.length})</h2>
             <div class="monitor-table-wrap">
               <table class="monitor-table">
-                <thead><tr><th>Room</th><th>Source</th><th>Batch</th><th>Party</th><th>Phase</th><th>Turns</th><th>Clashes</th><th>Ping</th></tr></thead>
-                <tbody>${activeRows || '<tr><td colspan="8" class="muted">No active games right now.</td></tr>'}</tbody>
+                <thead><tr><th>Room</th><th>Source</th><th>Batch</th><th>Party</th><th>Floor</th><th>Phase</th><th>Turns</th><th>Clashes</th><th>Ping</th></tr></thead>
+                <tbody>${activeRows || '<tr><td colspan="9" class="muted">No active games right now.</td></tr>'}</tbody>
               </table>
             </div>
           </div>
@@ -275,8 +319,8 @@ export function mountMonitorView(rootEl) {
           <h2>Recent Completed Games</h2>
           <div class="monitor-table-wrap">
             <table class="monitor-table">
-              <thead><tr><th>Room</th><th>Source</th><th>Batch</th><th>Party</th><th>Boss</th><th>Result</th><th>Turns</th><th>Clashes</th><th>Desp</th><th>Downed</th><th>Time</th></tr></thead>
-              <tbody>${recentRows || '<tr><td colspan="11" class="muted">No completed games yet.</td></tr>'}</tbody>
+              <thead><tr><th>Room</th><th>Source</th><th>Batch</th><th>Party</th><th>Floors</th><th>Boss</th><th>Result</th><th>Turns</th><th>Clashes</th><th>Desp</th><th>Downed</th><th>Time</th></tr></thead>
+              <tbody>${recentRows || '<tr><td colspan="12" class="muted">No completed games yet.</td></tr>'}</tbody>
             </table>
           </div>
         </div>

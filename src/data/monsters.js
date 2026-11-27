@@ -27,9 +27,10 @@ export const BOSSES = CATALOG.bosses.map((b) => ({
   flavor: b.flavor,
 }));
 
-export function bossHp(bossId, heroCount) {
+export function bossHp(bossId, heroCount, floorNumber = 1) {
   const boss = BOSSES.find((b) => b.id === bossId);
   if (!boss) return 0;
   const extras = Math.max(0, heroCount - 1);
-  return boss.baseHp + boss.hpPerExtraHero * extras;
+  const floorBonus = (RULES.bossHpPerExtraFloor ?? 2) * Math.max(0, (floorNumber || 1) - 1);
+  return boss.baseHp + boss.hpPerExtraHero * extras + floorBonus;
 }

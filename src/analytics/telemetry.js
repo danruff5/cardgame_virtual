@@ -42,6 +42,7 @@ export function createInitialGameRecord({
   source = 'ui-playtest',
   batchId = null,
   testerLabel = null,
+  targetFloors = 1,
   now = Date.now(),
 } = {}) {
   return {
@@ -50,6 +51,12 @@ export function createInitialGameRecord({
     source,
     batchId,
     testerLabel,
+    targetFloors: Math.max(1, Number(targetFloors || 1)),
+    currentFloor: 1,
+    maxFloorReached: 1,
+    floorsCleared: 0,
+    floorHistory: [],
+    storyCallbacksCarried: 0,
     startedAt: now,
     updatedAt: now,
     endedAt: null,
@@ -126,6 +133,13 @@ export function createInitialGameRecord({
     rejectedActionCount: 0,
     rejectedErrors: [],
     _activeClash: null,
+    _floorBaseline: {
+      turns: 0,
+      clashes: 0,
+      clashesWon: 0,
+      desperationFlips: 0,
+      heroDownedCount: 0,
+    },
   };
 }
 
@@ -178,6 +192,13 @@ export function computeStateDelta(record, prevState, nextState, action = null, n
   r.themeId = nextState.themeId || r.themeId;
   r.bossId = nextState.bossId || r.bossId;
   r.actionCount += 1;
+  const floorNum = Math.max(1, Number(nextState.floorNumber || 1));
+  r.currentFloor = floorNum;
+  if (floorNum > r.maxFloorReached) r.maxFloorReached = floorNum;
+  r.storyCallbacksCarried = Math.max(
+    r.storyCallbacksCarried || 0,
+    Array.isArray(nextState.storyStack) ? nextState.storyStack.length : 0,
+  );
 
   const heroPlayers = (nextState.players || []).filter((p) => p.role === 'hero');
   r.playerNames = heroPlayers.map((p) => p.name);
@@ -467,13 +488,56 @@ export function computeStateDelta(record, prevState, nextState, action = null, n
 
   updateHeroSnapshots(r, nextState);
 
-  // Lifecycle status (observation-only — never mutates nextState)
+  // Per-floor completion / wipe history
+  const base = r._floorBaseline || {
+    turns: 0,
+    clashes: 0,
+    clashesWon: 0,
+    desperationFlips: 0,
+    heroDownedCount: 0,
+  };
   const allDowned = heroEntries.length > 0 && heroEntries.every((h) => h.downed);
-  if (nextState.phase === 'victory') {
-    r.status = 'won';
-    r.endedAt = r.endedAt || now;
-  } else if (nextState.phase !== 'lobby' && allDowned) {
+  const isFloorWin = prevState?.phase !== 'victory' && nextState.phase === 'victory';
+  const isFloorLoss =
+    prevState?.phase !== 'defeat' &&
+    (nextState.phase === 'defeat' ||
+      (nextState.phase !== 'lobby' && nextState.phase !== 'victory' && allDowned));
+
+  if (isFloorWin || isFloorLoss) {
+    const alreadyLogged = r.floorHistory.some((f) => f.floorNumber === floorNum);
+    if (!alreadyLogged) {
+      r.floorHistory.push({
+        floorNumber: floorNum,
+        outcome: isFloorWin ? 'won' : 'lost',
+        turns: Math.max(0, r.explorationTurns - base.turns),
+        clashes: Math.max(0, r.clashesTotal - base.clashes),
+        clashesWon: Math.max(0, r.clashesWon - base.clashesWon),
+        desperationFlips: Math.max(0, r.desperationFlips - base.desperationFlips),
+        heroDownedCount: Math.max(0, r.heroDownedCount - base.heroDownedCount),
+        bossId: nextState.bossId || r.bossId,
+        bossDefeated: Boolean(nextState.floor?.bossDefeated),
+        themeId: nextState.themeId || r.themeId,
+        storyStackCount: Array.isArray(nextState.storyStack) ? nextState.storyStack.length : 0,
+      });
+    }
+    if (isFloorWin) {
+      r.floorsCleared = Math.max(r.floorsCleared || 0, floorNum);
+      r._floorBaseline = {
+        turns: r.explorationTurns,
+        clashes: r.clashesTotal,
+        clashesWon: r.clashesWon,
+        desperationFlips: r.desperationFlips,
+        heroDownedCount: r.heroDownedCount,
+      };
+    }
+  }
+
+  // Lifecycle status (observation-only — never mutates nextState)
+  if (nextState.phase === 'defeat' || (nextState.phase !== 'lobby' && nextState.phase !== 'victory' && allDowned)) {
     r.status = 'lost';
+    r.endedAt = r.endedAt || now;
+  } else if (nextState.phase === 'victory' && floorNum >= (r.targetFloors || 1)) {
+    r.status = 'won';
     r.endedAt = r.endedAt || now;
   } else if (nextState.phase !== 'lobby') {
     r.status = 'active';
@@ -487,6 +551,7 @@ export function computeStateDelta(record, prevState, nextState, action = null, n
 export function serializeRecord(record) {
   const copy = { ...record };
   delete copy._activeClash;
+  delete copy._floorBaseline;
   return copy;
 }
 
@@ -495,10 +560,11 @@ export function createTelemetryTracker({
   source = 'ui-playtest',
   batchId = null,
   testerLabel = null,
+  targetFloors = 1,
   endpoint = '/api/telemetry/game',
   sendFn = null,
 } = {}) {
-  const record = createInitialGameRecord({ roomCode, source, batchId, testerLabel });
+  const record = createInitialGameRecord({ roomCode, source, batchId, testerLabel, targetFloors });
   const dispatchSend =
     sendFn ||
     ((payload) => {

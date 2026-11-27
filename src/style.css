@@ -85,7 +85,7 @@ p {
 }
 
 button,
-input,
+input:not([type="checkbox"]):not([type="radio"]),
 select {
   font: inherit;
 }
@@ -125,7 +125,7 @@ button.danger {
   background: linear-gradient(180deg, #a55445, #7a342a);
 }
 
-input,
+input:not([type="checkbox"]):not([type="radio"]),
 select {
   width: 100%;
   border-radius: 10px;

@@ -66,6 +66,63 @@ describe('data inventory vs design counts', () => {
     expect(inv.bosses).toBeGreaterThanOrEqual(2);
     expect(inv.events).toBe(6);
     expect(inv.merchants).toBe(2);
-    expect(inv.stories).toBeUndefined();
+    expect(inv.stories).toBe(6);
+  });
+
+  it('keeps publicStateFor under 12 KB even with 4 heroes and 40-card clash pile (virtual_01)', () => {
+    const state = createEmptyState('BIG', 'dealer-1', 'Dealer');
+    for (let i = 0; i < 4; i += 1) {
+      const pid = `h${i + 1}`;
+      state.players.push({ id: pid, name: `Hero ${i + 1}`, role: 'hero', heroId: HEROES[i].id, connected: true });
+      state.heroes[pid] = createHeroRuntime(HEROES[i].id);
+      state.heroes[pid].hand = Array.from({ length: 8 }, (_, k) => ({
+        id: `${pid}-c${k}`,
+        type: 'rank',
+        suit: 'brawn',
+        rank: 3,
+        name: 'brawn 3',
+        rule: 'Verbose rule text that should be stripped',
+        flavor: 'Verbose flavor text that should be stripped',
+      }));
+    }
+    state.map.tiles = Array.from({ length: 14 }, (_, idx) => ({
+      key: `t-${idx}-0`,
+      x: idx,
+      y: 0,
+      roomId: 'R-04',
+      kind: 'monster',
+      name: 'Monster Lair',
+      faceUp: true,
+      cleared: false,
+      rule: 'Very long static rule string repeated on every tile',
+      flavor: 'Very long static flavor string repeated on every tile',
+    }));
+    state.log = Array.from({ length: 40 }, (_, i) => `Log entry ${i}: something verbose happened in the dungeon!`);
+    state.clash = {
+      roomKey: 't-0-0',
+      heroPlayerId: 'h1',
+      fighters: ['h1', 'h2', 'h3', 'h4'],
+      monsterId: 'B-01',
+      monsterName: 'Sir Clanks-a-Lot',
+      monsterHp: 12,
+      monsterMaxHp: 21,
+      monsterHand: [{ id: 'm1' }, { id: 'm2' }],
+      pile: Array.from({ length: 40 }, (_, i) => ({
+        id: `pile-${i}`,
+        type: 'rank',
+        suit: 'grit',
+        rank: (i % 6) + 1,
+        name: `grit ${(i % 6) + 1}`,
+      })),
+      topCard: { id: 'pile-39', type: 'rank', suit: 'grit', rank: 4, name: 'grit 4' },
+    };
+
+    const view = publicStateFor(state, 'h1');
+    const jsonSize = JSON.stringify(view).length;
+    expect(jsonSize).toBeLessThan(12000);
+    expect(view.clash.pile).toHaveLength(6);
+    expect(view.clash.pileCount).toBe(40);
+    expect(view.log).toHaveLength(20);
+    expect(view.map.tiles[0].rule).toBeUndefined();
   });
 });

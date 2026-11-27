@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
 import { formatCombatLogLine, consumeClashFx, renderClashModal } from '../src/ui/clashModal.js';
+import { computeTipPosition } from '../src/ui/cardTipPortal.js';
 import { COACH_TOURS } from '../src/ui/coachmarks.js';
 
 describe('formatCombatLogLine', () => {
@@ -273,5 +275,132 @@ describe('clash modal items & twin knives UI', () => {
     expect(cbIdx).toBeGreaterThan(-1);
     const cbBtn = html.slice(cbIdx - 80, cbIdx + 80);
     expect(cbBtn).toContain('disabled');
+  });
+
+  it('logs special card suits accurately in hover tooltips and disables cards when heroDazed (virtual_07)', () => {
+    const html = formatCombatLogLine('Sir Clanks-a-Lot plays Daze! (spark) — Pip will miss next turn.');
+    expect(html).toContain('Daze! (spark)');
+    expect(html).toContain('Play on SPARK or another Daze!');
+
+    const s = sampleClashState();
+    s.clash.heroDazed = true;
+    const modalHtml = renderClashModal(s, false, 'p1', {});
+    expect(modalHtml).toContain('id="btn-clash-dazed-skip"');
+    const cardIdx = modalHtml.indexOf('data-clash-card="a1"');
+    const cardBtn = modalHtml.slice(cardIdx - 80, cardIdx + 120);
+    expect(cardBtn).toContain('disabled');
+  });
+
+  it('renders belt-overflow modal inside clash layer and Enraged! chip (virtual_17)', () => {
+    const s = sampleClashState();
+    s.clash.enraged = true;
+    s.pending = {
+      kind: 'belt-overflow',
+      heroPlayerId: 'p1',
+      options: [
+        { id: 'G-25', name: 'Wakey-Wakey Smelling Salts' },
+        { id: 'G-27', name: 'Strawberry Fizz Potion' },
+      ],
+    };
+
+    const ownerHtml = renderClashModal(s, false, 'p1', {});
+    expect(ownerHtml).toContain('Enraged!');
+    expect(ownerHtml).toContain('table-prompt-overlay is-clash-prompt');
+    expect(ownerHtml).toContain('aria-label="Belt full"');
+    expect(ownerHtml).toContain('table-prompt-card is-vault');
+    expect(ownerHtml).toContain('data-belt-discard="0"');
+    expect(ownerHtml).toContain('data-belt-discard="1"');
+    expect(ownerHtml).not.toContain('data-belt-discard="0" disabled');
+
+    const otherHtml = renderClashModal(s, false, 'p2', {});
+    expect(otherHtml).toContain('data-belt-discard="0" disabled');
+
+    const closingHtml = renderClashModal(s, true, 'dealer', { closing: 'victory' });
+    expect(closingHtml).not.toContain('is-clash-prompt');
+  });
+
+  it('adds is-crowded to clash-player-hand when hand has 7+ cards (virtual_18)', () => {
+    const s = sampleClashState();
+    const normalHtml = renderClashModal(s, false, 'p1', {});
+    expect(normalHtml).not.toContain('clash-player-hand is-crowded');
+
+    s.heroes.p1.hand = Array.from({ length: 7 }, (_, i) => ({
+      id: `c${i}`,
+      type: 'rank',
+      suit: 'brawn',
+      rank: (i % 6) + 1,
+      name: `brawn ${(i % 6) + 1}`,
+    }));
+    const crowdedHtml = renderClashModal(s, false, 'p1', {});
+    expect(crowdedHtml).toContain('clash-player-hand is-crowded');
+  });
+
+  it('coachmarks.css does not force pointer-events: auto via #coach-root > * (virtual_05)', () => {
+    const css = fs.readFileSync(new URL('../src/ui/coachmarks.css', import.meta.url), 'utf8');
+    expect(css).not.toMatch(/#coach-root\s*>\s*\*\s*\{[^}]*pointer-events\s*:\s*auto/);
+    expect(css).toMatch(/#coach-root\s*>\s*\.coach-catcher[\s\S]*pointer-events\s*:\s*none/);
+  });
+});
+
+describe('cardTipPortal & Cookie-Tin toggle polish', () => {
+  it('computeTipPosition places above by default, flips below near top, and clamps horizontally', () => {
+    const vp = { width: 1280, height: 720 };
+    const tip = { width: 250, height: 100 };
+
+    const above = computeTipPosition({ left: 500, right: 600, top: 300, bottom: 440, width: 100, height: 140 }, tip, vp);
+    expect(above.top).toBe(190);
+    expect(above.left).toBe(425);
+
+    const flipped = computeTipPosition({ left: 10, right: 110, top: 20, bottom: 160, width: 100, height: 140 }, tip, vp);
+    expect(flipped.top).toBe(170);
+    expect(flipped.left).toBe(8);
+
+    const clampedRight = computeTipPosition({ left: 1200, right: 1270, top: 300, bottom: 440, width: 70, height: 140 }, tip, vp);
+    expect(clampedRight.left).toBe(1022);
+  });
+
+  it('renders Cookie-Tin parry toggle button and scopes global input width away from checkboxes', () => {
+    const state = {
+      version: 1,
+      phase: 'clash',
+      players: [{ id: 'p1', name: 'Hero', role: 'hero', heroId: 'H-01' }],
+      heroes: {
+        p1: {
+          heroId: 'H-01',
+          name: 'Sir Bumbles',
+          hp: 10,
+          maxHp: 10,
+          offhand: { id: 'G-17', name: 'Cookie-Tin Lid', tapped: false },
+          belt: [],
+          hand: [{ id: 'c1', type: 'rank', suit: 'brawn', rank: 3 }],
+          perk: { id: 'big-swing', name: 'Big Swing', text: '+2 Rank on Brawn' },
+        },
+      },
+      clash: {
+        roomKey: 't-1-0',
+        heroPlayerId: 'p1',
+        fighters: ['p1'],
+        monsterId: 'MON-01',
+        monsterName: 'Sneaky Goblin Intern',
+        monsterHp: 3,
+        monsterMaxHp: 3,
+        baseDmg: 1,
+        cunning: 4,
+        monsterHand: [],
+        activeSuit: 'zip',
+        activeRank: 5,
+        pile: [],
+        whoseTurn: 'hero',
+      },
+      decks: { actionCount: 20, actionDiscardCount: 0, desperationCount: 10 },
+      log: [],
+    };
+    const html = renderClashModal(state, false, 'p1');
+    expect(html).toContain('class="clash-check"');
+    expect(html).toContain('id="chk-cookie-parry"');
+    expect(html).toContain('class="clash-check-box"');
+
+    const styleCss = fs.readFileSync('src/style.css', 'utf8');
+    expect(styleCss).toMatch(/input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\)/);
   });
 });
