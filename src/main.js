@@ -14,6 +14,7 @@ import {
   syncCoachAfterRender,
 } from './ui/coachmarks.js';
 import { syncClashModal, wireTableLogHovers } from './ui/clashModal.js';
+import { initCardTipPortal, hideCardTip } from './ui/cardTipPortal.js';
 import { renderTable } from './ui/tableView.js';
 import { mountMonitorView } from './ui/monitorView.js';
 
@@ -121,6 +122,9 @@ const isMonitorMode =
     window.location.hash === '#monitor');
 
 const pendingRoom = readRoomFromUrl();
+if (typeof document !== 'undefined') {
+  initCardTipPortal();
+}
 if (isMonitorMode) {
   mountMonitorView(app);
 } else {
@@ -128,6 +132,7 @@ if (isMonitorMode) {
 }
 
 function render() {
+  hideCardTip();
   const isTable = Boolean(session.state && session.state.phase !== 'lobby');
   document.body.classList.toggle('table-active', isTable);
   if (!session.state) {

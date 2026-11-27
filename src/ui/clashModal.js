@@ -23,6 +23,7 @@ import {
   closingClashState,
 } from './clashMoves.js';
 import { captureFly, playFly, playCleanupSweep, prefersReducedMotion } from './clashAnim.js';
+import { hideCardTip } from './cardTipPortal.js';
 
 const NO_FX = {
   heroDelta: 0,
@@ -454,8 +455,10 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
         <button type="button" id="btn-clash-cramp" ${fighterHand.some((c) => isCramp(c)) ? '' : 'disabled'}>Stretch (discard ≤2 Cramp!)</button>
         ${
           hasCookie
-            ? `<label class="muted clash-check">
-                <input type="checkbox" id="chk-cookie-parry" /> Tap Cookie-Tin as Parry
+            ? `<label class="clash-check" for="chk-cookie-parry">
+                <input type="checkbox" id="chk-cookie-parry" />
+                <span class="clash-check-box" aria-hidden="true"></span>
+                <span class="clash-check-text">Tap Cookie-Tin as Parry</span>
               </label>`
             : ''
         }
@@ -750,6 +753,9 @@ export function renderClashModal(state, isDealer, meId, fx = {}) {
 }
 
 function wireLogCardHovers(root = document) {
+  if (typeof document !== 'undefined' && document.body?.classList?.contains('has-tip-portal')) {
+    return;
+  }
   root.querySelectorAll('.log-card-mention').forEach((el) => {
     const tip = el.querySelector('.card-hover-tip');
     if (!tip) return;
@@ -922,6 +928,7 @@ function clashLayer() {
 }
 
 function teardownClashModal(session, layer) {
+  hideCardTip();
   const ctl = session.clashCtl;
   if (ctl?.timer) clearTimeout(ctl.timer);
   Object.assign(ctl, { open: false, closing: false, key: null, snap: null, view: null, timer: null });
@@ -966,6 +973,7 @@ export function syncClashModal({ session, room, state, isDealer, meId }) {
       desperation: moves.some((m) => m.type === 'desperation'),
       error: session.error,
     });
+    hideCardTip();
     wireClashModal(room, session);
     playFly(layer, before, moves, { baseDelay: sameClash ? 0 : 320 });
 

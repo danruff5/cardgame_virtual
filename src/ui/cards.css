@@ -451,6 +451,28 @@
   text-align: left;
 }
 
+body.has-tip-portal .card-hover-tip:not(.is-portal) {
+  display: none !important;
+}
+
+#card-tip-layer.card-hover-tip.is-portal {
+  display: none;
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: auto;
+  transform: none;
+  width: max-content;
+  min-width: 220px;
+  max-width: min(290px, calc(100vw - 16px));
+  z-index: 9500;
+  pointer-events: none;
+}
+
+#card-tip-layer.card-hover-tip.is-portal.is-open {
+  display: block;
+}
+
 .vcard:hover > .card-hover-tip,
 .map-tile-wrap:hover > .card-hover-tip,
 .clash-card-btn:hover .card-hover-tip,
